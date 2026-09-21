@@ -1,0 +1,108 @@
+:root {
+  --bg: #03152f;
+  --panel: #061d3b;
+  --cyan: #56ffd0;
+  --blue: #9db9e6;
+  --border: #1b466d;
+  --text: #f4f7ff;
+}
+
+body {
+  background:
+    radial-gradient(ellipse at 50% 0, #092b4e, transparent 65%),
+    var(--bg);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+input,
+select,
+.brand,
+.tagline,
+nav,
+.eyebrow,
+.clock,
+.section-label,
+.badge,
+.demo,
+footer {
+  font-family: "Courier New", monospace;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: #f4f7ff;
+  letter-spacing: 1.5px;
+}
+
+.brand svg {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  color: var(--cyan);
+  shape-rendering: crispEdges;
+}
+
+.brand .brand-name {
+  color: #f4f7ff;
+}
+
+.brand .brand-name b {
+  color: var(--cyan);
+}
+
+button {
+  background: #06223a;
+}
+
+button:hover {
+  background: #0a3a42;
+  box-shadow: 0 0 14px rgb(86 255 208 / 18%);
+}
+
+.search {
+  border-color: #3a9d87;
+  background: rgb(0 30 40 / 38%);
+}
+
+nav a.active {
+  box-shadow: inset 0 0 18px rgb(86 255 208 / 14%);
+}
+
+nav a:hover {
+  background: #0a2945;
+}
+
+.card,
+.panel {
+  background: linear-gradient(120deg, rgb(6 29 59 / 92%), rgb(3 21 47 / 92%));
+}
+
+.brief-item:first-of-type {
+  background: #0a3a42;
+}
+
+.badge {
+  border-color: #3a9d87;
+  color: var(--cyan);
+}
+
+.city {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 12px, rgb(86 255 208 / 35%) 12px 15px, transparent 15px 25px),
+    repeating-linear-gradient(0deg, #03152f 0 15px, #176b72 15px 18px);
+}
+
+dialog {
+  background: var(--panel);
+}
+
+@media (max-width: 760px) {
+  .brand svg {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+}
