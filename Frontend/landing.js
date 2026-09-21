@@ -23,7 +23,7 @@ function resize(){
  const d=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(w*d);canvas.height=Math.round(h*d);if(ctx)ctx.setTransform(d,0,0,d,0,0);
 }
 function particle(){return{side:Math.random()<.5?-1:1,spread:Math.random()*2-1,t:0,duration:3+Math.random()*5,word:words[Math.floor(Math.random()*words.length)]};}
-function draw(now){frame=0;if(!ctx||paused||document.hidden||(!hover&&!entering))return;
+function draw(now){frame=0;if(!ctx||paused||entering||document.hidden||!hover)return;
  const dt=Math.min((now-(last||now))/1000,.05);last=now;ctx.clearRect(0,0,w,h);
  const amount = entering ? 60 : hover ? 40 : 0;
  particles=particles.filter(p=>p.t<1);
@@ -41,7 +41,7 @@ function draw(now){frame=0;if(!ctx||paused||document.hidden||(!hover&&!entering)
  }
  ctx.globalAlpha=1;ctx.shadowBlur=0;frame=requestAnimationFrame(draw);
 }
-function start(){if(!frame&&!paused&&ctx&&(hover||entering)){last=0;frame=requestAnimationFrame(draw);}}
+function start(){if(!frame&&!paused&&!entering&&ctx&&hover){last=0;frame=requestAnimationFrame(draw);}}
 function stopEffects(){cancelAnimationFrame(frame);frame=0;particles=[];if(ctx)ctx.clearRect(0,0,w,h);}
 function setPaused(value){paused=value;if(paused)stopEffects();else start();}
 function updateHover(){
@@ -73,18 +73,117 @@ landing.addEventListener('pointermove', event => {
   updateHover();
 });
 landing.addEventListener('pointerleave',()=>{pointerNear=false;updateHover();});
+// The only binary used in either effect is the UTF-8/ASCII encoding of "yukta".
+// Change this value to adjust how long the patches take to cover the viewport.
+const takeoverDuration = 2200;
+const takeoverCanvas = document.getElementById('takeover');
+const takeoverContext = takeoverCanvas.getContext('2d');
+let takeoverFrame = 0, takeoverStart = 0, tiles = [];
+let takeoverWidth = 0, takeoverHeight = 0;
+const tileWidth = 80, tileHeight = 42;
+
+function buildPatches() {
+  takeoverWidth = innerWidth;
+  takeoverHeight = innerHeight;
+  const d = Math.min(devicePixelRatio || 1, 2);
+  takeoverCanvas.width = Math.round(takeoverWidth * d);
+  takeoverCanvas.height = Math.round(takeoverHeight * d);
+  if (!takeoverContext) return;
+  takeoverContext.setTransform(d, 0, 0, d, 0, 0);
+  const cols = Math.ceil(takeoverWidth / tileWidth);
+  const rows = Math.ceil(takeoverHeight / tileHeight);
+  const rect = monitor.getBoundingClientRect();
+  const sx = Math.max(0, Math.min(cols - 1, Math.floor((rect.left + rect.width / 2) / tileWidth)));
+  const sy = Math.max(0, Math.min(rows - 1, Math.floor((rect.top + rect.height / 2) / tileHeight)));
+  tiles = Array.from({length: cols * rows}, (_, i) => ({
+    x: i % cols, y: Math.floor(i / cols), arrival: Infinity,
+    resistance: .15 + Math.pow(Math.random(), 2) * 5,
+    phase: Math.random() * Math.PI * 2
+  }));
+  // Weighted neighbour growth creates connected branches and delayed pockets.
+  // No radial distance or straight wipe is used to decide activation times.
+  const pending = [{index: sy * cols + sx, time: 0}];
+  tiles[pending[0].index].arrival = 0;
+  while (pending.length) {
+    pending.sort((a, b) => b.time - a.time);
+    const next = pending.pop();
+    const cell = tiles[next.index];
+    if (next.time !== cell.arrival) continue;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const x = cell.x + dx, y = cell.y + dy;
+      if (x < 0 || y < 0 || x >= cols || y >= rows) continue;
+      const i = y * cols + x;
+      const time = next.time + tiles[i].resistance;
+      if (time < tiles[i].arrival) {
+        tiles[i].arrival = time;
+        pending.push({index:i, time});
+      }
+    }
+  }
+  const maxArrival = Math.max(...tiles.map(t => t.arrival), 1);
+  for (const tile of tiles) tile.arrival = tile.arrival / maxArrival * (takeoverDuration - 180);
+}
+
+function paintTakeover(now) {
+  takeoverFrame = 0;
+  if (!entering || !takeoverContext) return;
+  if (takeoverWidth !== innerWidth || takeoverHeight !== innerHeight) buildPatches();
+  const elapsed = now - takeoverStart;
+  const c = takeoverContext;
+  c.clearRect(0, 0, takeoverWidth, takeoverHeight);
+  c.font = '12px monospace';
+  c.textAlign = 'left';
+  c.textBaseline = 'top';
+  for (const tile of tiles) {
+    const age = elapsed - tile.arrival;
+    if (age < 0) continue;
+    const x = tile.x * tileWidth, y = tile.y * tileHeight;
+    c.globalAlpha = Math.min(1, age / 150);
+    c.fillStyle = '#010d14';
+    c.fillRect(x, y, tileWidth + .5, tileHeight + .5);
+    const pulse = .5 + .5 * Math.sin(elapsed / 400 + tile.phase);
+    c.fillStyle = age < 250 ? '#8dffd3' : `rgba(64,239,150,${.35 + pulse * .5})`;
+    // Complete eight-bit bytes, repeated in y-u-k-t-a order, rather than random digits.
+    for (let row = 0; row < 2; row++) {
+      const byte = words[(tile.y * 2 + row + tile.x * 2) % words.length];
+      c.fillText(byte, x + 9, y + 5 + row * 18);
+    }
+    if (age < 220) {
+      c.fillStyle = '#56ffd050';
+      c.fillRect(x, y, tileWidth, 1);
+    }
+  }
+  c.globalAlpha = 1;
+  takeoverFrame = requestAnimationFrame(paintTakeover);
+}
+function startTakeover() {
+  if (!takeoverContext) { location.assign(monitor.href); return; }
+  buildPatches();
+  takeoverStart = performance.now();
+  takeoverFrame = requestAnimationFrame(paintTakeover);
+}
+function stopTakeover() {
+  cancelAnimationFrame(takeoverFrame);
+  takeoverFrame = 0;
+  tiles = [];
+  if (takeoverContext) takeoverContext.clearRect(0,0,takeoverWidth,takeoverHeight);
+}
+
 for (const link of [monitor]) {
  link.addEventListener('focus',updateHover);link.addEventListener('blur',updateHover);
  link.addEventListener('click',event=>{
  if(event.ctrlKey||event.metaKey||event.altKey||event.shiftKey||reduced.matches||paused)return;
- event.preventDefault();if(entering)return;entering=true;start();
- const box=landing.getBoundingClientRect();scene.style.setProperty('--travel-x',`${innerWidth/2-(box.left+cx)}px`);scene.style.setProperty('--travel-y',`${innerHeight/2-(box.top+cy)}px`);
+ event.preventDefault();
+ if(entering)return;
+ entering=true;
+ stopEffects();
  document.body.classList.add('entering');
- timers.push(setTimeout(()=>statusText.textContent='ENTERING CYBERHEAD-NEWS…',900));
- timers.push(setTimeout(()=>location.assign(link.href),1500));
+ startTakeover();
+ timers.push(setTimeout(()=>statusText.textContent='Entering CYBERHEAD-NEWS…',200));
+ timers.push(setTimeout(()=>location.assign(link.href),2900));
  });
 }
-function reset(){timers.forEach(clearTimeout);timers=[];entering=false;hover=false;pointerNear=false;stopEffects();landing.classList.remove('is-near');document.body.classList.remove('entering');statusText.textContent='';resize();start();}
-addEventListener('pageshow',reset);addEventListener('pagehide',()=>{timers.forEach(clearTimeout);cancelAnimationFrame(frame);frame=0;});
+function reset(){stopTakeover();timers.forEach(clearTimeout);timers=[];entering=false;hover=false;pointerNear=false;stopEffects();landing.classList.remove('is-near');document.body.classList.remove('entering');statusText.textContent='';resize();start();}
+addEventListener('pageshow',reset);addEventListener('pagehide',()=>{stopTakeover();timers.forEach(clearTimeout);cancelAnimationFrame(frame);frame=0;});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){cancelAnimationFrame(frame);frame=0;}else start();});
-reduced.addEventListener('change',()=>setPaused(reduced.matches));new ResizeObserver(resize).observe(landing);resize();setPaused(paused);
+reduced.addEventListener('change',()=>{setPaused(reduced.matches);if(reduced.matches&&entering){stopTakeover();timers.forEach(clearTimeout);location.assign(monitor.href);}});new ResizeObserver(resize).observe(landing);resize();setPaused(paused);

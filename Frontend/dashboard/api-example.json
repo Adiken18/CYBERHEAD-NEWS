@@ -1,0 +1,145 @@
+{
+  "generatedAt": "2026-09-21T12:00:00Z",
+  "briefing": {
+    "title": "Your Daily Briefing",
+    "summary": "Three stories to start your day. Review exposed gateways, credential theft and ransomware activity.",
+    "reportIds": [
+      "gateway",
+      "phishing",
+      "ransomware"
+    ]
+  },
+  "reports": [
+    {
+      "id": "gateway",
+      "title": "Exposed gateways take priority",
+      "category": "Vulnerability",
+      "severity": "Critical",
+      "score": 96,
+      "confidence": 0.97,
+      "publishedAt": "2026-09-21T11:30:00Z",
+      "summary": "Multiple internet-facing gateways have weak configurations, creating a path for unauthorised access. Review your external systems and apply available fixes.",
+      "details": "This fictional report illustrates how collected articles, extracted indicators and model predictions will appear. A backend would consolidate related coverage and retain the original sources for verification.",
+      "recommendation": "Inventory exposed gateways, verify access controls and follow the affected vendor’s patch guidance.",
+      "sourceIds": [
+        "demo-wire"
+      ],
+      "relatedCount": 3,
+      "indicators": [
+        "gateway.example.invalid"
+      ],
+      "tags": [
+        "Gateway",
+        "Access control"
+      ],
+      "image": "server"
+    },
+    {
+      "id": "phishing",
+      "title": "Credential theft targets inboxes",
+      "category": "Phishing",
+      "severity": "High",
+      "score": 84,
+      "confidence": 0.92,
+      "publishedAt": "2026-09-21T10:15:00Z",
+      "summary": "A fictional wave of convincing emails targets workplace accounts, using familiar brands to steal login credentials.",
+      "details": "The example campaign uses imitation sign-in pages. Grouped coverage lets an analyst review several articles about the same event without counting them as independent threats.",
+      "recommendation": "Review suspicious messages, verify sign-in URLs and strengthen account protection.",
+      "sourceIds": [
+        "demo-wire",
+        "demo-lab"
+      ],
+      "relatedCount": 4,
+      "indicators": [
+        "signin.example.invalid"
+      ],
+      "tags": [
+        "Email",
+        "Credential theft"
+      ],
+      "image": "mail"
+    },
+    {
+      "id": "ransomware",
+      "title": "Ransomware disrupts operations",
+      "category": "Ransomware",
+      "severity": "High",
+      "score": 89,
+      "confidence": 0.94,
+      "publishedAt": "2026-09-21T09:20:00Z",
+      "summary": "A sample ransomware campaign affects multiple organisations, with reports of encrypted systems and operational disruption.",
+      "details": "This demonstration shows a model-ranked ransomware story. Confidence expresses classification certainty; priority is a separate ranking score and is not a probability of attack.",
+      "recommendation": "Check recovery procedures and maintain tested, isolated backups.",
+      "sourceIds": [
+        "demo-lab"
+      ],
+      "relatedCount": 5,
+      "indicators": [],
+      "tags": [
+        "Malware",
+        "Business disruption"
+      ],
+      "image": "skull"
+    },
+    {
+      "id": "update",
+      "title": "Security updates ready for review",
+      "category": "Vulnerability",
+      "severity": "Medium",
+      "score": 58,
+      "confidence": 0.86,
+      "publishedAt": "2026-09-20T15:00:00Z",
+      "summary": "A fictional vendor bulletin highlights routine security fixes for an enterprise application.",
+      "details": "An example lower-priority report for search, filtering and severity comparisons.",
+      "recommendation": "Assess applicability and schedule updates through your normal change process.",
+      "sourceIds": [
+        "demo-wire"
+      ],
+      "relatedCount": 1,
+      "indicators": [],
+      "tags": [
+        "Patch management"
+      ],
+      "image": "server"
+    }
+  ],
+  "alerts": [
+    {
+      "reportId": "gateway",
+      "time": "11:30",
+      "text": "Exposed gateway story needs review"
+    },
+    {
+      "reportId": "ransomware",
+      "time": "09:20",
+      "text": "Ransomware coverage grouped"
+    },
+    {
+      "reportId": "phishing",
+      "time": "10:15",
+      "text": "Credential theft story added"
+    }
+  ],
+  "sources": [
+    {
+      "id": "demo-wire",
+      "name": "Example Security Wire",
+      "url": null,
+      "status": "Demo",
+      "description": "Fictional news feed used to demonstrate collected coverage."
+    },
+    {
+      "id": "demo-lab",
+      "name": "Example Threat Lab",
+      "url": null,
+      "status": "Demo",
+      "description": "Fictional research source. No collection is running."
+    }
+  ],
+  "pipeline": {
+    "collection": "Not connected",
+    "classification": "Sample predictions",
+    "ranking": "Sample scores",
+    "briefing": "Sample briefing"
+  }
+}
