@@ -1,0 +1,75 @@
+*{box-sizing:border-box} :root{color-scheme:dark;--navy:#03152f;--mint:#56ffd0}
+html,body{margin:0;background:var(--navy);color:#f4f7ff;font-family:Arial,Helvetica,sans-serif}
+.landing{position:relative;width:100%;height:100vh;height:100dvh;min-height:520px;overflow:hidden;isolation:isolate}
+.scene{position:absolute;inset:0;background:url('assets/desktop-scene.png') center / cover no-repeat;transform-origin:var(--origin-x,50%) var(--origin-y,56.5%);z-index:-2}
+.brand{position:absolute;top:2.6%;left:0;width:100%;display:flex;flex-direction:column;align-items:center;gap:8px;font:700 clamp(14px,1.65vw,24px)/1.3 monospace;letter-spacing:1.5px}
+.brand svg{width:clamp(30px,5vh,48px);height:clamp(30px,5vh,48px);color:var(--mint);shape-rendering:crispEdges}.brand b{color:var(--mint)}
+.heading{position:absolute;top:17%;left:4%;width:92%;text-align:center;z-index:3;pointer-events:none}
+h1{font-size:clamp(30px,min(4.35vw,7.6vh),74px);font-weight:800;line-height:1.12;letter-spacing:-1.5px;margin:0}
+.heading p{font-size:clamp(15px,min(1.6vw,2.8vh),26px);color:#9db9e6;margin:24px 0 0;line-height:1.4}
+#code{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
+.monitor{position:absolute;display:block;border-radius:8px;z-index:2;cursor:pointer;transition:box-shadow .3s;background:transparent}
+.monitor:hover,.monitor:focus-visible{box-shadow:0 0 35px #50ffb340,inset 0 0 25px #50ffb31f}
+a:focus-visible,button:focus-visible{outline:2px solid #afffe2;outline-offset:5px}
+.actions{position:absolute;bottom:6.3%;left:0;width:100%;text-align:center;z-index:4}
+.enter{display:inline-flex;align-items:center;justify-content:center;gap:24px;min-height:50px;padding:14px 35px;border:1px solid var(--mint);border-radius:7px;background:#001e28e6;text-decoration:none;color:var(--mint);font:700 clamp(12px,1.2vw,17px)/1.4 monospace;letter-spacing:2px;transition:background .2s,box-shadow .2s}
+.enter:hover{background:#073a38;box-shadow:0 0 25px #4affba30}
+.actions p{font:700 clamp(9px,1.05vw,15px)/1.5 monospace;letter-spacing:2.3px;color:var(--mint);margin:27px 0 0}
+.motion{position:absolute;bottom:14px;right:18px;border:0;background:#02162abf;color:#abc1d8;font:11px monospace;padding:8px;cursor:pointer;z-index:4}
+.veil{position:fixed;inset:0;background:#010b14;opacity:0;pointer-events:none;z-index:8}.status{position:fixed;inset:48% 16px auto;margin:0;text-align:center;color:var(--mint);font:14px/1.6 monospace;letter-spacing:2px;z-index:9;pointer-events:none}
+body.entering{overflow:hidden}body.entering .scene{transition:transform 1.35s cubic-bezier(.55,.06,.78,.4);transform:translate(var(--travel-x,0px),var(--travel-y,0px)) scale(8)}
+
+/* Hide the clickable monitor area during the zoom transition */
+body.entering .monitor,
+body.entering .monitor:hover,
+body.entering .monitor:focus,
+body.entering .monitor:focus-visible {
+  opacity: 0;
+  box-shadow: none !important;
+  outline: none !important;
+  pointer-events: none;
+}
+body.entering .heading,body.entering .brand,body.entering .actions,body.entering .motion{opacity:0;transition:opacity .3s}body.entering .veil{opacity:1;transition:opacity .55s .85s}
+@media(max-width:600px){.brand{top:4%;font-size:15px}.heading{top:19%;left:5%;width:90%}h1{font-size:clamp(25px,6.4vw,36px);letter-spacing:-.8px}.heading p{font-size:14px;margin-top:18px}.actions{bottom:9%}.enter{padding:13px 20px;min-height:46px;letter-spacing:1px}.actions p{letter-spacing:1px;font-size:9px;margin-top:20px}.scene{background-size:auto 100%}}
+@media(max-height:600px) and (min-width:601px){.brand{flex-direction:row;justify-content:center;font-size:15px}.brand svg{width:28px;height:28px}.heading{top:13%}.heading p{margin-top:12px}.actions{bottom:5%}.actions p{margin-top:12px}.enter{min-height:40px;padding:9px 25px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}body.entering .scene{transform:none}}
+
+/* Only the computer screen is clickable. */
+.monitor {
+  display: block;
+  text-decoration: none;
+}
+
+/* Hide the old text inside the screen. */
+.screen-label {
+  display: none;
+}
+
+/* The text below the computer cannot receive clicks. */
+.actions {
+  pointer-events: none;
+}
+
+/* Keep the previous appearance of the entrance hint. */
+.landing .actions .enter {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s, visibility 0.2s;
+}
+
+/* Show the hint when hovering over or focusing the screen. */
+.landing .monitor:hover ~ .actions .enter,
+.landing .monitor:focus-visible ~ .actions .enter {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Show the hint on touch devices, which have no hover. */
+@media (hover: none) {
+  .landing .actions .enter {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: none;
+  }
+}

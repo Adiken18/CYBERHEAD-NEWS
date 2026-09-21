@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="CYBERHEAD-NEWS — stay one step ahead.">
+
+  <title>Enter CYBERHEAD-NEWS</title>
+
+  <link rel="stylesheet" href="landing.css">
+  <script src="landing.js" defer></script>
+</head>
+
+<body>
+  <main class="landing" id="landing">
+    <div class="scene" id="scene" aria-hidden="true"></div>
+
+    <header class="brand">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M1 1h2v2h2v2h6V3h2V1h2v10h-2v2h-2v2H5v-2H3v-2H1Z"
+        />
+        <path
+          fill="#03152f"
+          d="M4 7h3v2h2V7h3v4h-2v2H6v-2H4Z"
+        />
+      </svg>
+
+      <span>CYBERHEAD-<b>NEWS</b></span>
+    </header>
+
+    <section class="heading">
+      <h1>Threats move fast.<br>Stay one step ahead.</h1>
+      <p>Know the risks. Get informed today.</p>
+    </section>
+
+    <canvas id="code" aria-hidden="true"></canvas>
+
+    <!-- Only the computer screen is clickable. -->
+    <a
+      id="monitor"
+      class="monitor"
+      href="entrance-preview.html"
+      aria-label="Enter CYBERHEAD-NEWS"
+    ></a>
+
+    <!-- This is a visual hint, not a clickable button. -->
+    <div class="actions">
+      <span class="enter" aria-hidden="true">
+        ENTER TERMINAL ↗
+      </span>  
+    </div>
+  </main>
+
+  <div class="veil" aria-hidden="true"></div>
+  <p class="status" id="status" role="status"></p>
+</body>
+</html>
