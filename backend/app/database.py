@@ -3,6 +3,7 @@ from contextlib import closing
 from pathlib import Path
 from datetime import datetime, timezone
 from app.categories import PRIMARY_CATEGORIES
+import json
 
 
 DATABASE_PATH = Path(__file__).resolve().parent.parent / "cyberhead.db"
@@ -159,6 +160,18 @@ def initialise_database():
 
         connection.commit()
 
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS cve_details (
+                cve_id TEXT PRIMARY KEY NOT NULL,
+                lookup_status TEXT NOT NULL CHECK (
+                    lookup_status IN ('found', 'not_found', 'error')
+                ),
+                record_json TEXT,
+                last_checked_at TEXT NOT NULL,
+                data_fetched_at TEXT,
+                lookup_error TEXT
+            )
+        """)
 
 def get_articles():
     with closing(get_connection()) as connection:
@@ -273,3 +286,147 @@ def get_article_cves():
         """).fetchall()
 
         return [dict(row) for row in rows]
+
+def get_cves_for_lookup(limit=5):
+    """Select new CVEs or cached lookups older than 24 hours."""
+
+    with closing(get_connection()) as connection:
+        rows = connection.execute(
+            """
+            SELECT DISTINCT article_cves.cve_id
+            FROM article_cves
+            LEFT JOIN cve_details
+                ON article_cves.cve_id = cve_details.cve_id
+            WHERE cve_details.cve_id IS NULL
+               OR datetime(cve_details.last_checked_at)
+                    < datetime('now', '-24 hours')
+            ORDER BY
+                cve_details.last_checked_at ASC,
+                article_cves.cve_id ASC
+            LIMIT ?
+            """,
+            (limit,)
+        ).fetchall()
+
+        return [row["cve_id"] for row in rows]
+
+
+def save_cve_lookup(cve_id, status, record=None, error=None):
+    """Store a lookup and preserve cached data if a request fails."""
+
+    if status not in ("found", "not_found", "error"):
+        raise ValueError("Invalid CVE lookup status.")
+
+    if status == "found" and (
+        not isinstance(record, dict) or record.get("id") != cve_id
+    ):
+        raise ValueError("The returned record does not match the CVE ID.")
+
+    now = datetime.now(timezone.utc).isoformat()
+    record_json = json.dumps(record) if record is not None else None
+    fetched_at = now if status == "found" else None
+
+    with closing(get_connection()) as connection:
+        connection.execute(
+            """
+            INSERT INTO cve_details (
+                cve_id,
+                lookup_status,
+                record_json,
+                last_checked_at,
+                data_fetched_at,
+                lookup_error
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+
+            ON CONFLICT(cve_id) DO UPDATE SET
+                lookup_status = excluded.lookup_status,
+                last_checked_at = excluded.last_checked_at,
+                lookup_error = excluded.lookup_error,
+                record_json = CASE
+                    WHEN excluded.lookup_status = 'error'
+                    THEN cve_details.record_json
+                    ELSE excluded.record_json
+                END,
+                data_fetched_at = CASE
+                    WHEN excluded.lookup_status = 'error'
+                    THEN cve_details.data_fetched_at
+                    ELSE excluded.data_fetched_at
+                END
+            """,
+            (
+                cve_id,
+                status,
+                record_json,
+                now,
+                fetched_at,
+                error
+            )
+        )
+
+        connection.commit()
+
+
+def get_cve_details():
+    """Return readable details with all supplied CVSS assessments."""
+
+    with closing(get_connection()) as connection:
+        rows = connection.execute("""
+            SELECT *
+            FROM cve_details
+            ORDER BY cve_id
+        """).fetchall()
+
+    results = []
+
+    for row in rows:
+        record = json.loads(row["record_json"]) if row["record_json"] else {}
+
+        description = next(
+            (
+                item["value"]
+                for item in record.get("descriptions", [])
+                if item.get("lang") == "en"
+            ),
+            None
+        )
+
+        scores = []
+
+        for metric_name, assessments in record.get("metrics", {}).items():
+            if not metric_name.startswith("cvssMetric"):
+                continue
+
+            for assessment in assessments:
+                cvss = assessment.get("cvssData", {})
+
+                scores.append({
+                    "version": cvss.get("version"),
+                    "source": assessment.get("source"),
+                    "type": assessment.get("type"),
+                    "base_score": cvss.get("baseScore"),
+                    "base_severity": (
+                        cvss.get("baseSeverity")
+                        or assessment.get("baseSeverity")
+                    ),
+                    "vector": cvss.get("vectorString")
+                })
+
+        results.append({
+            "cve_id": row["cve_id"],
+            "lookup_status": row["lookup_status"],
+            "vulnerability_status": record.get("vulnStatus"),
+            "description": description,
+            "published_at": record.get("published"),
+            "modified_at": record.get("lastModified"),
+            "cvss_assessments": scores,
+            "references": record.get("references", []),
+            "last_checked_at": row["last_checked_at"],
+            "data_fetched_at": row["data_fetched_at"],
+            "lookup_error": row["lookup_error"],
+            "nvd_url": (
+                "https://nvd.nist.gov/vuln/detail/" + row["cve_id"]
+            )
+        })
+
+    return results

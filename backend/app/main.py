@@ -49,3 +49,13 @@ def list_article_cves():
         "count": len(links),
         "article_cves": links
     }
+
+from app.database import get_cve_details
+@app.get("/cves")
+def list_cve_details():
+    details = get_cve_details()
+
+    return {
+        "count": len(details),
+        "cves": details
+    }
