@@ -119,3 +119,26 @@ def get_articles():
         """).fetchall()
 
         return [dict(row) for row in rows]
+
+def save_article(title, url, source, published_at=None, content=None):
+    """Save an article. Return True if new, False if its URL already exists."""
+
+    with closing(get_connection()) as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO articles (
+                title,
+                url,
+                source,
+                published_at,
+                content
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(url) DO NOTHING
+            """,
+            (title, url, source, published_at, content)
+        )
+
+        connection.commit()
+
+        return cursor.rowcount == 1
