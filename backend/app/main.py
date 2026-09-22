@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.categories import PRIMARY_CATEGORIES
 from app.database import initialise_database, get_articles
 
+from app.database import get_article_cves
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,3 +41,11 @@ def list_articles():
 def list_categories():
     return {"categories": list(PRIMARY_CATEGORIES)}
 
+@app.get("/article-cves")
+def list_article_cves():
+    links = get_article_cves()
+
+    return {
+        "count": len(links),
+        "article_cves": links
+    }

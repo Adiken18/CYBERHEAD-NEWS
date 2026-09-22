@@ -142,6 +142,21 @@ def initialise_database():
 
         add_extraction_columns(connection)
 
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS article_cves (
+                article_id INTEGER NOT NULL
+                    REFERENCES articles(id) ON DELETE CASCADE,
+                cve_id TEXT NOT NULL,
+                detected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (article_id, cve_id)
+            )
+        """)
+
+        connection.execute("""
+            CREATE INDEX IF NOT EXISTS idx_article_cves_cve
+            ON article_cves(cve_id)
+        """)
+
         connection.commit()
 
 
@@ -240,3 +255,21 @@ def save_extraction_result(article_id, status, text=None, error=None):
         )
 
         connection.commit()
+
+def get_article_cves():
+    with closing(get_connection()) as connection:
+        rows = connection.execute("""
+            SELECT
+                article_cves.article_id,
+                article_cves.cve_id,
+                articles.title,
+                articles.source,
+                articles.url
+            FROM article_cves
+            JOIN articles
+                ON articles.id = article_cves.article_id
+            ORDER BY article_cves.article_id DESC,
+                     article_cves.cve_id
+        """).fetchall()
+
+        return [dict(row) for row in rows]
