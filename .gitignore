@@ -1,0 +1,13 @@
+# Python virtual environments
+venv/
+.venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Local secrets
+.env
+# Local development database
+backend/cyberhead.db
+backend/cyberhead.db-*
