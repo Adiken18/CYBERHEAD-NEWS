@@ -11,3 +11,6 @@ __pycache__/
 # Local development database
 backend/cyberhead.db
 backend/cyberhead.db-*
+
+#csv export
+backend/data/exports/
