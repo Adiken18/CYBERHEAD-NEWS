@@ -1,7 +1,7 @@
 import sqlite3
 from contextlib import closing
 from pathlib import Path
-
+from datetime import datetime, timezone
 from app.categories import PRIMARY_CATEGORIES
 
 
@@ -139,7 +139,7 @@ def initialise_database():
                 PRIMARY KEY (report_id, system_name)
             )
         """)
-        
+
         add_extraction_columns(connection)
 
         connection.commit()
@@ -178,3 +178,65 @@ def save_article(title, url, source, published_at=None, content=None):
         connection.commit()
 
         return cursor.rowcount == 1
+
+def get_articles_for_extraction(limit=5, retry_failed=False):
+    """Return articles waiting for extraction."""
+
+    statuses = ("pending", "failed") if retry_failed else ("pending",)
+    placeholders = ", ".join("?" for _ in statuses)
+
+    with closing(get_connection()) as connection:
+        rows = connection.execute(
+            f"""
+            SELECT id, title, url
+            FROM articles
+            WHERE extraction_status IN ({placeholders})
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (*statuses, limit)
+        ).fetchall()
+
+        return [dict(row) for row in rows]
+
+
+def save_extraction_result(article_id, status, text=None, error=None):
+    """Save extraction results without modifying the original RSS text."""
+
+    if status not in ("success", "failed", "skipped"):
+        raise ValueError("Invalid extraction result status.")
+
+    if status == "success" and not (text and text.strip()):
+        raise ValueError("Successful extraction requires article text.")
+
+    now = datetime.now(timezone.utc).isoformat()
+    successful = status == "success"
+
+    with closing(get_connection()) as connection:
+        connection.execute(
+            """
+            UPDATE articles
+            SET extraction_status = ?,
+                extraction_attempted_at = ?,
+                full_content = CASE
+                    WHEN ? THEN ? ELSE full_content
+                END,
+                extracted_at = CASE
+                    WHEN ? THEN ? ELSE extracted_at
+                END,
+                extraction_error = ?
+            WHERE id = ?
+            """,
+            (
+                status,
+                now,
+                successful,
+                text,
+                successful,
+                now,
+                None if successful else error,
+                article_id
+            )
+        )
+
+        connection.commit()
