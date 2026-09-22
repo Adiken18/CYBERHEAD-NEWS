@@ -14,6 +14,39 @@ def get_connection():
     connection.execute("PRAGMA foreign_keys = ON")
     return connection
 
+def add_extraction_columns(connection):
+    """Add extraction fields without deleting existing articles."""
+
+    existing_columns = {
+        row[1]
+        for row in connection.execute("PRAGMA table_info(articles)")
+    }
+
+    new_columns = {
+        "full_content": "TEXT",
+
+        "extraction_status": """
+            TEXT NOT NULL DEFAULT 'pending'
+            CHECK (
+                extraction_status IN (
+                    'pending',
+                    'success',
+                    'failed',
+                    'skipped'
+                )
+            )
+        """,
+
+        "extraction_attempted_at": "TEXT",
+        "extracted_at": "TEXT",
+        "extraction_error": "TEXT",
+    }
+
+    for name, definition in new_columns.items():
+        if name not in existing_columns:
+            connection.execute(
+                f"ALTER TABLE articles ADD COLUMN {name} {definition}"
+            )
 
 def initialise_database():
     with closing(get_connection()) as connection:
@@ -106,6 +139,9 @@ def initialise_database():
                 PRIMARY KEY (report_id, system_name)
             )
         """)
+        
+        add_extraction_columns(connection)
+
         connection.commit()
 
 
