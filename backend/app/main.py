@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.categories import PRIMARY_CATEGORIES
 from app.database import initialise_database, get_articles
 
 
@@ -33,3 +34,9 @@ def list_articles():
         "count": len(articles),
         "articles": articles
     }
+
+
+@app.get("/categories")
+def list_categories():
+    return {"categories": list(PRIMARY_CATEGORIES)}
+
