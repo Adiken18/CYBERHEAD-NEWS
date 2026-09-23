@@ -531,3 +531,50 @@ def get_cisa_kev_details():
         """).fetchall()
 
         return [dict(row) for row in rows]
+
+    
+def get_articles_for_category_classification(limit=20):
+    """Return extracted articles that do not have a category yet."""
+
+    with closing(get_connection()) as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                title,
+                full_content,
+                content
+            FROM articles
+            WHERE extraction_status = 'success'
+              AND (
+                    category IS NULL
+                    OR trim(category) = ''
+                  )
+            ORDER BY id
+            LIMIT ?
+            """,
+            (limit,)
+        ).fetchall()
+
+        return [dict(row) for row in rows]
+
+
+def save_article_category(article_id, category):
+    """Save the ML-predicted category for an article."""
+
+    if category not in PRIMARY_CATEGORIES:
+        raise ValueError(
+            f"Invalid category: {category}"
+        )
+
+    with closing(get_connection()) as connection:
+        connection.execute(
+            """
+            UPDATE articles
+            SET category = ?
+            WHERE id = ?
+            """,
+            (category, article_id)
+        )
+
+        connection.commit()    

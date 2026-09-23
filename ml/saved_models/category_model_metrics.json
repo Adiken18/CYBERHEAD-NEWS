@@ -1,0 +1,41 @@
+{
+    "training_articles": 173,
+    "category_distribution": {
+        "Vulnerabilities": 64,
+        "Other cybersecurity news": 51,
+        "Other malware": 28,
+        "Data breaches": 15,
+        "Phishing": 12,
+        "Ransomware": 2,
+        "DDoS": 1
+    },
+    "cross_validation_folds": 2,
+    "evaluation_note": "Categories with fewer than two examples were excluded from cross-validation but included in final model training.",
+    "models": {
+        "Naive Bayes": {
+            "accuracy": 0.5523255813953488,
+            "precision_macro": 0.29071874552988164,
+            "recall_macro": 0.273228021978022,
+            "f1_macro": 0.2347115847115847
+        },
+        "Logistic Regression": {
+            "accuracy": 0.7848837209302326,
+            "precision_macro": 0.6955620833941518,
+            "recall_macro": 0.6159825244200244,
+            "f1_macro": 0.6374993059740245
+        },
+        "Linear SVM": {
+            "accuracy": 0.7848837209302326,
+            "precision_macro": 0.6958607006020798,
+            "recall_macro": 0.6186015720390721,
+            "f1_macro": 0.6393088168107675
+        },
+        "Random Forest": {
+            "accuracy": 0.7616279069767442,
+            "precision_macro": 0.690726363981097,
+            "recall_macro": 0.5476678876678877,
+            "f1_macro": 0.5764681868397954
+        }
+    },
+    "best_model": "Linear SVM"
+}
