@@ -107,4 +107,4 @@ DDoS: 1
 
 These categories should be improved later with more reviewed training examples.
 
-**Next step is to add tag extractor because category is too broad.**
+**Next step is to add tag  because category is too broad.**
