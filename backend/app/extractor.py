@@ -20,10 +20,29 @@ BOT_NAME = "CyberheadNews"
 USER_AGENT = "CyberheadNews/0.1 (academic news collector)"
 
 ALLOWED_HOSTS = {
+    # BleepingComputer
     "www.bleepingcomputer.com",
     "bleepingcomputer.com",
+
+    # The Hacker News
     "thehackernews.com",
     "www.thehackernews.com",
+
+    # SecurityWeek
+    "securityweek.com",
+    "www.securityweek.com",
+
+    # Krebs on Security
+    "krebsonsecurity.com",
+    "www.krebsonsecurity.com",
+
+    # Dark Reading
+    "darkreading.com",
+    "www.darkreading.com",
+
+    # Ars Technica
+    "arstechnica.com",
+    "www.arstechnica.com",
 }
 
 MAX_PAGE_BYTES = 5 * 1024 * 1024

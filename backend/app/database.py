@@ -173,6 +173,24 @@ def initialise_database():
             )
         """)
 
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS cisa_kev (
+                cve_id TEXT PRIMARY KEY NOT NULL,
+                vendor_project TEXT,
+                product TEXT,
+                vulnerability_name TEXT,
+                date_added TEXT,
+                short_description TEXT,
+                required_action TEXT,
+                due_date TEXT,
+                known_ransomware_campaign_use TEXT,
+                notes TEXT,
+                last_checked_at TEXT NOT NULL
+            )
+        """)
+
+        connection.commit()
+
 def get_articles():
     with closing(get_connection()) as connection:
         rows = connection.execute("""
@@ -430,3 +448,86 @@ def get_cve_details():
         })
 
     return results
+def get_detected_cve_ids():
+    """Return all distinct CVE IDs detected in collected articles."""
+
+    with closing(get_connection()) as connection:
+        rows = connection.execute("""
+            SELECT DISTINCT cve_id
+            FROM article_cves
+            ORDER BY cve_id
+        """).fetchall()
+
+        return [row["cve_id"] for row in rows]
+
+
+def save_cisa_kev_record(record):
+    """Save or update one CISA Known Exploited Vulnerability record."""
+
+    cve_id = record.get("cveID")
+
+    if not cve_id:
+        raise ValueError("CISA KEV record does not contain a CVE ID.")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    with closing(get_connection()) as connection:
+        connection.execute(
+            """
+            INSERT INTO cisa_kev (
+                cve_id,
+                vendor_project,
+                product,
+                vulnerability_name,
+                date_added,
+                short_description,
+                required_action,
+                due_date,
+                known_ransomware_campaign_use,
+                notes,
+                last_checked_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+
+            ON CONFLICT(cve_id) DO UPDATE SET
+                vendor_project = excluded.vendor_project,
+                product = excluded.product,
+                vulnerability_name = excluded.vulnerability_name,
+                date_added = excluded.date_added,
+                short_description = excluded.short_description,
+                required_action = excluded.required_action,
+                due_date = excluded.due_date,
+                known_ransomware_campaign_use =
+                    excluded.known_ransomware_campaign_use,
+                notes = excluded.notes,
+                last_checked_at = excluded.last_checked_at
+            """,
+            (
+                cve_id,
+                record.get("vendorProject"),
+                record.get("product"),
+                record.get("vulnerabilityName"),
+                record.get("dateAdded"),
+                record.get("shortDescription"),
+                record.get("requiredAction"),
+                record.get("dueDate"),
+                record.get("knownRansomwareCampaignUse"),
+                record.get("notes"),
+                now,
+            )
+        )
+
+        connection.commit()
+
+
+def get_cisa_kev_details():
+    """Return CISA KEV records stored for detected CVEs."""
+
+    with closing(get_connection()) as connection:
+        rows = connection.execute("""
+            SELECT *
+            FROM cisa_kev
+            ORDER BY date_added DESC, cve_id
+        """).fetchall()
+
+        return [dict(row) for row in rows]
