@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from app.categories import PRIMARY_CATEGORIES
 import json
+from app.threat_tags import THREAT_TAGS
 
 
 DATABASE_PATH = Path(__file__).resolve().parent.parent / "cyberhead.db"
@@ -47,6 +48,39 @@ def add_extraction_columns(connection):
         if name not in existing_columns:
             connection.execute(
                 f"ALTER TABLE articles ADD COLUMN {name} {definition}"
+            )
+
+def add_tagging_columns(connection):
+    """Add tag-processing fields without deleting existing data."""
+
+    existing_columns = {
+        row[1]
+        for row in connection.execute(
+            "PRAGMA table_info(articles)"
+        )
+    }
+
+    new_columns = {
+        "tagging_status": """
+            TEXT NOT NULL DEFAULT 'pending'
+            CHECK (
+                tagging_status IN (
+                    'pending',
+                    'success',
+                    'failed'
+                )
+            )
+        """,
+
+        "tags_processed_at": "TEXT",
+        "tagging_error": "TEXT",
+    }
+
+    for name, definition in new_columns.items():
+        if name not in existing_columns:
+            connection.execute(
+                f"ALTER TABLE articles "
+                f"ADD COLUMN {name} {definition}"
             )
 
 def initialise_database():
@@ -142,6 +176,7 @@ def initialise_database():
         """)
 
         add_extraction_columns(connection)
+        add_tagging_columns(connection)
 
         connection.execute("""
             CREATE TABLE IF NOT EXISTS article_cves (
@@ -186,6 +221,24 @@ def initialise_database():
                 known_ransomware_campaign_use TEXT,
                 notes TEXT,
                 last_checked_at TEXT NOT NULL
+            )
+        """)
+
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS article_tags (
+                article_id INTEGER NOT NULL
+                    REFERENCES articles(id) ON DELETE CASCADE,
+
+                tag TEXT NOT NULL,
+
+                score INTEGER NOT NULL,
+
+                evidence_json TEXT NOT NULL,
+
+                detected_at TEXT NOT NULL
+                    DEFAULT CURRENT_TIMESTAMP,
+
+                PRIMARY KEY (article_id, tag)
             )
         """)
 
@@ -577,4 +630,146 @@ def save_article_category(article_id, category):
             (category, article_id)
         )
 
-        connection.commit()    
+        connection.commit()
+
+def get_articles_for_tagging(limit=20, retry_failed=False):
+
+    statuses = (
+        ("pending", "failed")
+        if retry_failed
+        else ("pending",)
+    )
+
+    placeholders = ", ".join(
+        "?" for _ in statuses
+    )
+
+    with closing(get_connection()) as connection:
+
+        rows = connection.execute(
+            f"""
+            SELECT
+                id,
+                title,
+                full_content,
+                content,
+                category
+            FROM articles
+            WHERE extraction_status = 'success'
+              AND tagging_status IN ({placeholders})
+            ORDER BY id
+            LIMIT ?
+            """,
+            (*statuses, limit)
+        ).fetchall()
+
+        return [dict(row) for row in rows]
+
+
+def get_nvd_records_for_article(article_id):
+
+    with closing(get_connection()) as connection:
+
+        rows = connection.execute(
+            """
+            SELECT
+                article_cves.cve_id,
+                cve_details.record_json
+            FROM article_cves
+
+            LEFT JOIN cve_details
+                ON article_cves.cve_id =
+                   cve_details.cve_id
+
+            WHERE article_cves.article_id = ?
+              AND cve_details.record_json IS NOT NULL
+            """,
+            (article_id,)
+        ).fetchall()
+
+        return [dict(row) for row in rows]
+
+
+def save_article_tags(article_id, tag_results):
+
+    for result in tag_results:
+        if result["tag"] not in THREAT_TAGS:
+            raise ValueError(
+                f"Invalid tag: {result['tag']}"
+            )
+
+    now = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    with closing(get_connection()) as connection:
+
+        connection.execute(
+            """
+            DELETE FROM article_tags
+            WHERE article_id = ?
+            """,
+            (article_id,)
+        )
+
+        for result in tag_results:
+
+            connection.execute(
+                """
+                INSERT INTO article_tags (
+                    article_id,
+                    tag,
+                    score,
+                    evidence_json
+                )
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    article_id,
+                    result["tag"],
+                    result["score"],
+                    json.dumps(
+                        result["evidence"],
+                        ensure_ascii=False
+                    )
+                )
+            )
+
+        connection.execute(
+            """
+            UPDATE articles
+            SET tagging_status = 'success',
+                tags_processed_at = ?,
+                tagging_error = NULL
+            WHERE id = ?
+            """,
+            (now, article_id)
+        )
+
+        connection.commit()
+
+
+def save_tagging_failure(article_id, error):
+
+    now = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    with closing(get_connection()) as connection:
+
+        connection.execute(
+            """
+            UPDATE articles
+            SET tagging_status = 'failed',
+                tags_processed_at = ?,
+                tagging_error = ?
+            WHERE id = ?
+            """,
+            (
+                now,
+                str(error),
+                article_id
+            )
+        )
+
+        connection.commit()
