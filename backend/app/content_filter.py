@@ -6,7 +6,6 @@ UNSUITABLE_PATTERNS = {
         r"\bwebinar\b",
         r"\bvirtual event\b",
         r"\bregister now\b",
-        r"\bconference\b",
     ],
 
     "mixed roundup": [
@@ -37,29 +36,88 @@ def check_article_suitability(title, text):
 
     Return:
         (False, reason)
-        if it looks like promotional, event, roundup,
-        or other unsuitable content.
+        if the article is promotional, an event,
+        a roundup, or another unsuitable item.
     """
 
     title = title or ""
     text = text or ""
 
-    # Only inspect the title and beginning for this decision.
-    # We do not want a random mention later in the article
-    # to cause it to be rejected.
     lead_text = text[:1200]
 
-    combined = f"{title} {lead_text}"
+    # -----------------------------------------------------
+    # EVENT / WEBINAR
+    #
+    # Only check the TITLE.
+    #
+    # A normal news article may mention a conference
+    # or webinar inside its body without being an event.
+    # -----------------------------------------------------
 
-    for reason, patterns in UNSUITABLE_PATTERNS.items():
+    for pattern in UNSUITABLE_PATTERNS[
+        "webinar/event"
+    ]:
 
-        for pattern in patterns:
+        if re.search(
+            pattern,
+            title,
+            re.IGNORECASE
+        ):
+            return False, "webinar/event"
 
-            if re.search(
-                pattern,
-                combined,
-                re.IGNORECASE
-            ):
-                return False, reason
+    # -----------------------------------------------------
+    # ROUNDUPS
+    #
+    # Also check only the TITLE because a normal article
+    # could mention another roundup inside the body.
+    # -----------------------------------------------------
+
+    for pattern in UNSUITABLE_PATTERNS[
+        "mixed roundup"
+    ]:
+
+        if re.search(
+            pattern,
+            title,
+            re.IGNORECASE
+        ):
+            return False, "mixed roundup"
+
+    # -----------------------------------------------------
+    # PROMOTIONAL / SPONSORED
+    #
+    # These indicators can appear near the beginning
+    # even if they are not in the title.
+    # -----------------------------------------------------
+
+    combined = (
+        f"{title} {lead_text}"
+    )
+
+    for pattern in UNSUITABLE_PATTERNS[
+        "promotional/sponsored"
+    ]:
+
+        if re.search(
+            pattern,
+            combined,
+            re.IGNORECASE
+        ):
+            return False, "promotional/sponsored"
+
+    # -----------------------------------------------------
+    # PRESS RELEASE
+    # -----------------------------------------------------
+
+    for pattern in UNSUITABLE_PATTERNS[
+        "press release"
+    ]:
+
+        if re.search(
+            pattern,
+            combined,
+            re.IGNORECASE
+        ):
+            return False, "press release"
 
     return True, None

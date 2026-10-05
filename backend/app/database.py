@@ -83,6 +83,54 @@ def add_tagging_columns(connection):
                 f"ADD COLUMN {name} {definition}"
             )
 
+def add_severity_columns(connection):
+    """Add severity-processing fields without deleting existing data."""
+
+    existing_columns = {
+        row[1]
+        for row in connection.execute(
+            "PRAGMA table_info(articles)"
+        )
+    }
+
+    new_columns = {
+        "severity_status": """
+            TEXT NOT NULL DEFAULT 'pending'
+            CHECK (
+                severity_status IN (
+                    'pending',
+                    'success',
+                    'failed'
+                )
+            )
+        """,
+
+        "severity_score": """
+            INTEGER
+            CHECK (
+                severity_score IS NULL
+                OR severity_score BETWEEN 0 AND 100
+            )
+        """,
+
+        "severity_reason": "TEXT",
+
+        "severity_processed_at": "TEXT",
+
+        "severity_error": "TEXT",
+
+        "severity_rules_version": "TEXT",
+    }
+
+    for name, definition in new_columns.items():
+
+        if name not in existing_columns:
+
+            connection.execute(
+                f"ALTER TABLE articles "
+                f"ADD COLUMN {name} {definition}"
+            )
+
 def initialise_database():
     with closing(get_connection()) as connection:
         connection.execute("""
@@ -177,6 +225,7 @@ def initialise_database():
 
         add_extraction_columns(connection)
         add_tagging_columns(connection)
+        add_severity_columns(connection)
 
         connection.execute("""
             CREATE TABLE IF NOT EXISTS article_cves (
@@ -769,6 +818,269 @@ def save_tagging_failure(article_id, error):
                 now,
                 str(error),
                 article_id
+            )
+        )
+
+        connection.commit()
+
+def get_articles_for_severity(
+    limit=20,
+    retry_failed=False
+):
+    """Return articles waiting for severity analysis."""
+
+    statuses = (
+        ("pending", "failed")
+        if retry_failed
+        else ("pending",)
+    )
+
+    placeholders = ", ".join(
+        "?" for _ in statuses
+    )
+
+    with closing(get_connection()) as connection:
+
+        rows = connection.execute(
+            f"""
+            SELECT
+                id,
+                title,
+                category,
+                published_at
+            FROM articles
+            WHERE severity_status
+                IN ({placeholders})
+              AND extraction_status = 'success'
+              AND tagging_status = 'success'
+              AND category IS NOT NULL
+              AND trim(category) <> ''
+            ORDER BY id
+            LIMIT ?
+            """,
+            (*statuses, limit)
+        ).fetchall()
+
+        return [
+            dict(row)
+            for row in rows
+        ]
+
+
+def get_article_severity_context(article_id):
+    """Return all evidence used for severity scoring."""
+
+    with closing(get_connection()) as connection:
+
+        article = connection.execute(
+            """
+            SELECT
+                id,
+                title,
+                category,
+                published_at,
+                content,
+                full_content
+            FROM articles
+            WHERE id = ?
+            """,
+            (article_id,)
+        ).fetchone()
+
+        if article is None:
+            return None
+
+        tag_rows = connection.execute(
+            """
+            SELECT tag
+            FROM article_tags
+            WHERE article_id = ?
+            ORDER BY tag
+            """,
+            (article_id,)
+        ).fetchall()
+
+        cve_rows = connection.execute(
+            """
+            SELECT
+                ac.cve_id,
+                cd.lookup_status,
+                cd.record_json,
+                ck.cve_id AS kev_cve_id,
+                ck.known_ransomware_campaign_use
+
+            FROM article_cves ac
+
+            LEFT JOIN cve_details cd
+                ON cd.cve_id = ac.cve_id
+
+            LEFT JOIN cisa_kev ck
+                ON ck.cve_id = ac.cve_id
+
+            WHERE ac.article_id = ?
+
+            ORDER BY ac.cve_id
+            """,
+            (article_id,)
+        ).fetchall()
+
+    result = dict(article)
+
+    result["tags"] = [
+        row["tag"]
+        for row in tag_rows
+    ]
+
+    result["cves"] = [
+        dict(row)
+        for row in cve_rows
+    ]
+
+    return result
+
+
+def save_severity_result(
+    article_id,
+    severity,
+    score,
+    reasons,
+    rules_version
+):
+    """Save a successful severity assessment."""
+
+    valid_levels = {
+        "Low",
+        "Medium",
+        "High",
+        "Critical",
+    }
+
+    if severity not in valid_levels:
+        raise ValueError(
+            "Invalid severity level."
+        )
+
+    if not isinstance(score, int):
+        raise ValueError(
+            "Severity score must be an integer."
+        )
+
+    if score < 0 or score > 100:
+        raise ValueError(
+            "Severity score must be between 0 and 100."
+        )
+
+    now = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    reason_text = "\n".join(
+        reasons
+    )
+
+    with closing(get_connection()) as connection:
+
+        connection.execute(
+            """
+            UPDATE articles
+
+            SET
+                severity = ?,
+                severity_score = ?,
+                severity_reason = ?,
+                severity_status = 'success',
+                severity_processed_at = ?,
+                severity_error = NULL,
+                severity_rules_version = ?
+
+            WHERE id = ?
+            """,
+            (
+                severity,
+                score,
+                reason_text,
+                now,
+                rules_version,
+                article_id,
+            )
+        )
+
+        connection.commit()
+
+
+def save_severity_failure(
+    article_id,
+    error
+):
+    """Save a severity-processing failure."""
+
+    now = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    with closing(get_connection()) as connection:
+
+        connection.execute(
+            """
+            UPDATE articles
+
+            SET
+                severity_status = 'failed',
+                severity_processed_at = ?,
+                severity_error = ?
+
+            WHERE id = ?
+            """,
+            (
+                now,
+                str(error),
+                article_id,
+            )
+        )
+
+        connection.commit()
+
+def save_severity_exclusion(
+    article_id,
+    reason,
+    rules_version
+):
+    """
+    Mark an article as processed but exclude it
+    from threat severity scoring.
+    """
+
+    now = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    reason_text = (
+        "Excluded from threat severity analysis: "
+        f"{reason}"
+    )
+
+    with closing(get_connection()) as connection:
+
+        connection.execute(
+            """
+            UPDATE articles
+
+            SET
+                severity = NULL,
+                severity_score = NULL,
+                severity_reason = ?,
+                severity_status = 'success',
+                severity_processed_at = ?,
+                severity_error = NULL,
+                severity_rules_version = ?
+
+            WHERE id = ?
+            """,
+            (
+                reason_text,
+                now,
+                rules_version,
+                article_id,
             )
         )
 
