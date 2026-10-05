@@ -14,3 +14,7 @@ backend/cyberhead.db-*
 
 #csv export
 backend/data/exports/
+
+# Pipeline logs
+pipeline.log
+
