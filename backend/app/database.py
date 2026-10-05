@@ -131,6 +131,51 @@ def add_severity_columns(connection):
                 f"ADD COLUMN {name} {definition}"
             )
 
+def add_summary_columns(connection):
+    """Add article-summary fields without deleting existing data."""
+
+    existing_columns = {
+        row[1]
+        for row in connection.execute(
+            "PRAGMA table_info(articles)"
+        )
+    }
+
+    new_columns = {
+        "summary": "TEXT",
+
+        "why_it_matters": "TEXT",
+
+        "recommendations": "TEXT",
+
+        "summary_status": """
+            TEXT NOT NULL DEFAULT 'pending'
+            CHECK (
+                summary_status IN (
+                    'pending',
+                    'success',
+                    'failed',
+                    'excluded'
+                )
+            )
+        """,
+
+        "summary_processed_at": "TEXT",
+
+        "summary_error": "TEXT",
+
+        "summary_method": "TEXT",
+    }
+
+    for name, definition in new_columns.items():
+
+        if name not in existing_columns:
+
+            connection.execute(
+                f"ALTER TABLE articles "
+                f"ADD COLUMN {name} {definition}"
+            )
+
 def initialise_database():
     with closing(get_connection()) as connection:
         connection.execute("""
@@ -226,6 +271,7 @@ def initialise_database():
         add_extraction_columns(connection)
         add_tagging_columns(connection)
         add_severity_columns(connection)
+        add_summary_columns(connection)
 
         connection.execute("""
             CREATE TABLE IF NOT EXISTS article_cves (
@@ -1080,6 +1126,249 @@ def save_severity_exclusion(
                 reason_text,
                 now,
                 rules_version,
+                article_id,
+            )
+        )
+
+        connection.commit()
+
+def get_articles_for_summarization(
+    limit=20,
+    retry_failed=False
+):
+    """
+    Return articles waiting for summary generation.
+
+    Only articles that have already completed the previous
+    CYBERHEAD processing stages are selected.
+    """
+
+    statuses = (
+        ("pending", "failed")
+        if retry_failed
+        else ("pending",)
+    )
+
+    placeholders = ", ".join(
+        "?" for _ in statuses
+    )
+
+    with closing(get_connection()) as connection:
+
+        rows = connection.execute(
+            f"""
+            SELECT
+                id,
+                title,
+                content,
+                full_content,
+                category,
+                severity,
+                severity_score,
+                severity_reason
+            FROM articles
+            WHERE summary_status IN ({placeholders})
+
+              AND extraction_status = 'success'
+
+              AND tagging_status = 'success'
+
+              AND severity_status = 'success'
+
+            ORDER BY id DESC
+
+            LIMIT ?
+            """,
+            (*statuses, limit)
+        ).fetchall()
+
+        return [
+            dict(row)
+            for row in rows
+        ]
+
+
+def get_article_summary_context(article_id):
+    """
+    Return tags and CVEs that can help generate
+    'Why it matters' and recommendations.
+    """
+
+    with closing(get_connection()) as connection:
+
+        tag_rows = connection.execute(
+            """
+            SELECT
+                tag,
+                score,
+                evidence_json
+            FROM article_tags
+            WHERE article_id = ?
+            ORDER BY score DESC, tag
+            """,
+            (article_id,)
+        ).fetchall()
+
+        cve_rows = connection.execute(
+            """
+            SELECT
+                article_cves.cve_id,
+
+                cve_details.record_json,
+
+                cisa_kev.cve_id AS kev_cve_id,
+
+                cisa_kev.known_ransomware_campaign_use
+
+            FROM article_cves
+
+            LEFT JOIN cve_details
+                ON cve_details.cve_id =
+                   article_cves.cve_id
+
+            LEFT JOIN cisa_kev
+                ON cisa_kev.cve_id =
+                   article_cves.cve_id
+
+            WHERE article_cves.article_id = ?
+
+            ORDER BY article_cves.cve_id
+            """,
+            (article_id,)
+        ).fetchall()
+
+        return {
+            "tags": [
+                dict(row)
+                for row in tag_rows
+            ],
+
+            "cves": [
+                dict(row)
+                for row in cve_rows
+            ],
+        }
+
+
+def save_summary_result(
+    article_id,
+    summary,
+    why_it_matters,
+    recommendations,
+    method
+):
+    """Save successful article-summary output."""
+
+    if not summary or not summary.strip():
+        raise ValueError(
+            "A successful summary cannot be empty."
+        )
+
+    now = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    with closing(get_connection()) as connection:
+
+        connection.execute(
+            """
+            UPDATE articles
+
+            SET summary = ?,
+                why_it_matters = ?,
+                recommendations = ?,
+                summary_status = 'success',
+                summary_processed_at = ?,
+                summary_error = NULL,
+                summary_method = ?
+
+            WHERE id = ?
+            """,
+            (
+                summary.strip(),
+                (
+                    why_it_matters.strip()
+                    if why_it_matters
+                    else None
+                ),
+                (
+                    recommendations.strip()
+                    if recommendations
+                    else None
+                ),
+                now,
+                method,
+                article_id,
+            )
+        )
+
+        connection.commit()
+
+
+def save_summary_failure(
+    article_id,
+    error
+):
+    """Record a failed summary attempt."""
+
+    now = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    with closing(get_connection()) as connection:
+
+        connection.execute(
+            """
+            UPDATE articles
+
+            SET summary_status = 'failed',
+                summary_processed_at = ?,
+                summary_error = ?
+
+            WHERE id = ?
+            """,
+            (
+                now,
+                str(error),
+                article_id,
+            )
+        )
+
+        connection.commit()
+
+
+def save_summary_exclusion(
+    article_id,
+    reason
+):
+    """
+    Mark content that should not receive
+    an article-level cybersecurity summary.
+    """
+
+    now = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    with closing(get_connection()) as connection:
+
+        connection.execute(
+            """
+            UPDATE articles
+
+            SET summary = NULL,
+                why_it_matters = NULL,
+                recommendations = NULL,
+                summary_status = 'excluded',
+                summary_processed_at = ?,
+                summary_error = ?,
+                summary_method = NULL
+
+            WHERE id = ?
+            """,
+            (
+                now,
+                reason,
                 article_id,
             )
         )

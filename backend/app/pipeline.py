@@ -12,6 +12,7 @@ from app.cisa_enricher import enrich_cisa_kev
 from app.category_classifier import classify_articles
 from app.tag_extractor import process_articles as process_tags
 from app.severity_engine import process_articles as process_severity
+from app.summarizer import process_articles as process_summaries
 from app.database import initialise_database, DATABASE_PATH
 
 
@@ -39,6 +40,11 @@ def print_pipeline_summary():
     connection.row_factory = sqlite3.Row
 
     try:
+
+        # =================================================
+        # BASIC ARTICLE COUNTS
+        # =================================================
+
         total_articles = connection.execute(
             """
             SELECT COUNT(*)
@@ -70,6 +76,10 @@ def print_pipeline_summary():
             WHERE tagging_status = 'success'
             """
         ).fetchone()[0]
+
+        # =================================================
+        # SEVERITY COUNTS
+        # =================================================
 
         severity_success = connection.execute(
             """
@@ -105,6 +115,46 @@ def print_pipeline_summary():
             """
         ).fetchone()[0]
 
+        # =================================================
+        # SUMMARY COUNTS
+        # =================================================
+
+        summary_success = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM articles
+            WHERE summary_status = 'success'
+            """
+        ).fetchone()[0]
+
+        summary_excluded = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM articles
+            WHERE summary_status = 'excluded'
+            """
+        ).fetchone()[0]
+
+        summary_failed = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM articles
+            WHERE summary_status = 'failed'
+            """
+        ).fetchone()[0]
+
+        summary_pending = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM articles
+            WHERE summary_status = 'pending'
+            """
+        ).fetchone()[0]
+
+        # =================================================
+        # DISPLAY DATABASE SUMMARY
+        # =================================================
+
         print()
         print("=" * 70)
         print("CYBERHEAD PIPELINE DATABASE SUMMARY")
@@ -114,10 +164,20 @@ def print_pipeline_summary():
         print(f"Extraction successful: {extracted}")
         print(f"Category classified:   {classified}")
         print(f"Tagging processed:     {tagged}")
+
         print(f"Severity processed:    {severity_success}")
         print(f"Severity scored:       {severity_scored}")
         print(f"Severity excluded:     {severity_excluded}")
         print(f"Severity failed:       {severity_failed}")
+
+        print(f"Summary successful:    {summary_success}")
+        print(f"Summary excluded:      {summary_excluded}")
+        print(f"Summary failed:        {summary_failed}")
+        print(f"Summary pending:       {summary_pending}")
+
+        # =================================================
+        # SEVERITY DISTRIBUTION
+        # =================================================
 
         print()
         print("Severity distribution:")
@@ -145,12 +205,14 @@ def print_pipeline_summary():
             print("  No severity results yet.")
 
         for row in rows:
+
             print(
                 f"  {row['severity']:8s}: "
                 f"{row['total']}"
             )
 
     finally:
+
         connection.close()
 
 
@@ -176,6 +238,7 @@ def run_pipeline(
     6. Check CISA KEV
     7. Extract threat tags
     8. Calculate severity
+    9. Generate article summaries
     """
 
     start_time = time.time()
@@ -217,6 +280,7 @@ def run_pipeline(
         )
 
         try:
+
             source_failures = collect_all()
 
             if source_failures:
@@ -250,8 +314,8 @@ def run_pipeline(
             )
 
             # Do not stop here.
-            # Articles from previous successful sources
-            # can still be processed.
+            # Articles from previously successful
+            # sources can still be processed.
 
     # =====================================================
     # STAGE 2 - FULL-TEXT EXTRACTION
@@ -263,6 +327,7 @@ def run_pipeline(
     )
 
     try:
+
         extraction_failures = extract_batch(
             limit=article_limit,
             retry_failed=True,
@@ -295,6 +360,7 @@ def run_pipeline(
     )
 
     try:
+
         extract_cves()
 
     except Exception as error:
@@ -326,6 +392,7 @@ def run_pipeline(
     )
 
     try:
+
         classify_articles(
             limit=article_limit
         )
@@ -359,6 +426,7 @@ def run_pipeline(
     )
 
     try:
+
         nvd_errors = enrich_cves(
             limit=nvd_limit
         )
@@ -385,6 +453,7 @@ def run_pipeline(
     if nvd_errors:
 
         print()
+
         print(
             "NVD enrichment reported one or more errors."
         )
@@ -409,6 +478,7 @@ def run_pipeline(
     )
 
     try:
+
         enrich_cisa_kev()
 
     except Exception as error:
@@ -440,6 +510,7 @@ def run_pipeline(
     )
 
     try:
+
         process_tags(
             limit=article_limit,
             retry_failed=True,
@@ -474,6 +545,7 @@ def run_pipeline(
     )
 
     try:
+
         process_severity(
             limit=article_limit,
             retry_failed=True,
@@ -490,10 +562,47 @@ def run_pipeline(
         return 1
 
     # =====================================================
+    # STAGE 9 - ARTICLE SUMMARIZATION
+    # =====================================================
+
+    print_stage(
+        9,
+        "ARTICLE SUMMARIZATION"
+    )
+
+    try:
+
+        process_summaries(
+            limit=article_limit,
+            retry_failed=True,
+        )
+
+    except Exception as error:
+
+        logger.exception(
+            "Article summarization failed."
+        )
+
+        print(
+            "\nPIPELINE STOPPED."
+        )
+
+        print(
+            "Article summaries could not be generated."
+        )
+
+        print_pipeline_summary()
+
+        return 1
+
+    # =====================================================
     # COMPLETE
     # =====================================================
 
-    duration = time.time() - start_time
+    duration = (
+        time.time()
+        - start_time
+    )
 
     print_pipeline_summary()
 
@@ -515,6 +624,7 @@ def run_pipeline(
         )
 
         for warning in warnings:
+
             print(
                 f"  - {warning}"
             )
@@ -581,11 +691,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.limit < 1:
+
         parser.error(
             "--limit must be at least 1."
         )
 
     if args.nvd_limit < 1:
+
         parser.error(
             "--nvd-limit must be at least 1."
         )
