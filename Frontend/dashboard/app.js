@@ -1,33 +1,6088 @@
 (() => {
-'use strict';
-const $ = s => document.querySelector(s);
-const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const date = value => {const d=new Date(value);return Number.isNaN(d.getTime())?'Date unavailable':d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});};
-const routes=[['briefing','⌂','Daily Briefing'],['alerts','△','Threats & Alerts'],['reports','▤','All Reports'],['saved','♧','Saved Stories'],['analysis','▥','Analysis'],['sources','⚒','Sources'],['about','ⓘ','About']];
-let data, query='', severity='All', category='All', sort='priority', saved=[];
-try {const v=JSON.parse(localStorage.getItem('cyberhead.saved')||'[]');if(Array.isArray(v))saved=v.filter(x=>typeof x==='string');} catch {}
-let page=()=>routes.some(r=>r[0]===location.hash.slice(1))?location.hash.slice(1):'briefing';
-const reportById=id=>data.reports.find(r=>r.id===id);
-const badges=r=>`<span class="badge severity ${escape(r.severity)}">${escape(r.severity.toUpperCase())}</span><span class="badge">${escape(r.category.toUpperCase())}</span>`;
-const art=r=>`<div class="art ${['mail','skull'].includes(r.image)?r.image:''}" role="img" aria-label="Pixel-art cybersecurity illustration"></div>`;
-const sourceName=r=>r.sourceIds.map(id=>data.sources.find(s=>s.id===id)?.name||id).join(', ');
-function card(r,featured=false){return `<article class="card ${featured?'featured':''}">${art(r)}<div><div class="meta">${badges(r)}<time datetime="${escape(r.publishedAt)}">${escape(date(r.publishedAt))}</time></div><h3>${escape(r.title)}</h3><p>${escape(r.summary)}</p><div class="actions"><span class="eyebrow">PRIORITY ${r.score}/100</span><button data-open="${escape(r.id)}">Read report →</button></div><div class="related"><button class="text-button" data-open="${escape(r.id)}">Related coverage grouped (${escape(r.relatedCount)}) →</button></div></div></article>`;}
-function intro(title,subtitle){return `<div class="intro"><div><div class="eyebrow">WELCOME BACK, ANALYST</div><h1>${title}</h1><p>${escape(subtitle)}</p></div><div class="clock">${escape(date(new Date()))}<strong id="clock">${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</strong><span class="demo">${window.CYBERHEAD_CONFIG.mode==='mock'?'SAMPLE BRIEFING':'CONNECTED TO API'}</span></div></div>`;}
-function alertList(){return data.alerts.map(a=>`<div class="alert"><time>${escape(a.time)}</time><button class="text-button" data-open="${escape(a.reportId)}">${escape(a.text)}</button></div>`).join('')||'<p>No alerts available.</p>';}
-function briefing(){const stories=data.briefing.reportIds.map(reportById).filter(Boolean);return intro('Your <em>Daily Briefing</em>',data.briefing.summary)+`<div class="layout"><div><div class="section-label">TOP STORY</div>${stories[0]?card(stories[0],true):'<div class="empty">No briefing available yet.</div>'}<div class="section-label">MORE TOP STORIES</div><div class="grid">${stories.slice(1).map(r=>card(r)).join('')}</div></div><aside class="rail"><section class="panel"><h2>▤ TODAY’S BRIEFING</h2>${stories.map((r,i)=>`<button class="brief-item" data-open="${escape(r.id)}"><span class="number">0${i+1}</span>${escape(r.title)}</button>`).join('')}<a class="brief-item" href="#reports"><span class="number">＋</span>More security news</a></section><section class="panel"><h2>△ RECENT ALERTS</h2>${alertList()}<a href="#alerts">View all alerts →</a></section><section class="panel"><h2>▱ SOURCES</h2><p>Trace each story back to its collected coverage.</p><span class="demo">${data.sources.length} SOURCES · ${window.CYBERHEAD_CONFIG.mode==='mock'?'DEMO':'API DATA'}</span><a class="brief-item" href="#sources">View all sources →</a></section></aside></div>`;}
-function filtered(){return data.reports.filter(r=>(page()!=='saved'||saved.includes(r.id))&&(severity==='All'||r.severity===severity)&&(category==='All'||r.category===category)&&`${r.title} ${r.summary} ${r.category} ${r.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase())).sort((a,b)=>sort==='recent'?new Date(b.publishedAt)-new Date(a.publishedAt):b.score-a.score);}
-function listing(){const rows=filtered();const options=(list,current)=>list.map(v=>`<option ${v===current?'selected':''}>${escape(v)}</option>`).join('');return intro(page()==='saved'?'Saved <em>Stories</em>':'All <em>Reports</em>',page()==='saved'?'Your reading list, saved on this browser.':'Explore collected stories, ranked by threat priority.')+`<div class="toolbar"><label>Severity <select id="severity">${options(['All','Critical','High','Medium','Low'],severity)}</select></label><label>Category <select id="category">${options(['All',...new Set(data.reports.map(r=>r.category))],category)}</select></label><label>Sort <select id="sort"><option value="priority" ${sort==='priority'?'selected':''}>Priority first</option><option value="recent" ${sort==='recent'?'selected':''}>Newest first</option></select></label><span>${rows.length} reports</span><button id="reset">Reset filters</button></div><div class="grid">${rows.map(r=>card(r)).join('')}</div>${!rows.length?'<div class="empty">No matching stories. Try resetting filters or saving a report.</div>':''}`;}
-function analysis(){const total=data.reports.length;return intro('Threat <em>Analysis</em>','A snapshot of the loaded reports. Demo predictions are illustrative.')+`<div class="stat-grid"><div class="panel">Collected reports<strong>${total}</strong></div><div class="panel">Critical priority<strong>${data.reports.filter(r=>r.severity==='Critical').length}</strong></div><div class="panel">Sources<strong>${data.sources.length}</strong></div></div><section class="panel"><h2>REPORTS BY SEVERITY</h2>${['Critical','High','Medium','Low'].map(s=>{const n=data.reports.filter(r=>r.severity===s).length;return `<div class="bar-row"><span>${s}</span><div class="bar" role="img" aria-label="${s}: ${n} reports"><span style="width:${total?n/total*100:0}%"></span></div><span>${n}</span></div>`;}).join('')}</section><p>Classification confidence measures the model’s certainty about a category. Priority scores indicate ranking; they are not attack probabilities.</p>`;}
-function safeLink(url,label){try{const u=new URL(url);if(['https:','http:'].includes(u.protocol))return `<a href="${escape(u.href)}" target="_blank" rel="noopener noreferrer">${escape(label)} ↗</a>`;}catch{}return `<span>${escape(label)} — no source URL supplied</span>`;}
-function sources(){return intro('Intelligence <em>Sources</em>','Original sources and collection status.')+data.sources.map(s=>`<section class="panel source"><h2>${escape(s.name)}</h2><span class="badge">${escape(s.status)}</span><p>${escape(s.description)}</p>${s.url?safeLink(s.url,'Visit source'):'<span class="demo">FICTIONAL SOURCE · NO LIVE FEED</span>'}</section>`).join('')+`<section class="panel"><h2>PIPELINE STATUS</h2>${Object.entries(data.pipeline||{}).map(([k,v])=>`<p>${escape(k)}: <strong>${escape(v)}</strong></p>`).join('')}</section>`;}
-function about(){return intro('About <em>Cyberhead</em>','Threats move fast. Stay one step ahead.')+`<div class="prose panel"><h2>YOUR DAILY SECURITY BRIEFING</h2><p>Cyberhead organises cybersecurity coverage into readable briefings, grouped reports and threat priorities, with access to original sources.</p><h2>HOW TO USE IT</h2><p>Start with the daily briefing, open a report to inspect its summary and extracted indicators, then save stories to revisit. Search all reports and filter by category or severity.</p><h2>CURRENT VERSION</h2><p>This frontend demonstrates the interface. In demo mode, all stories, alerts, model scores and sources are fictional. No articles are collected and no ML model runs here.</p><h2>FUTURE INTELLIGENCE PIPELINE</h2><p>The backend collector will fetch permitted sources. Backend processing can extract fields, group duplicates, run classification and ranking models, and generate a daily briefing. This interface displays the resulting API data.</p><h2>LOCAL STORAGE</h2><p>Saved report IDs are stored only in this browser. There are no user accounts or cross-device syncing in this version.</p></div>`;}
-function render(){if(!data)return;const current=page();$('#nav').innerHTML=routes.map(([id,icon,label])=>`<a href="#${id}" class="${id===current?'active':''}" ${id===current?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</a>`).join('');document.title=`${routes.find(r=>r[0]===current)[2]} — CYBERHEAD`;$('#content').innerHTML=current==='briefing'?briefing():['reports','saved'].includes(current)?listing():current==='analysis'?analysis():current==='sources'?sources():current==='about'?about():intro('Threats <em>& Alerts</em>','Alerts derived from the loaded report feed.')+`<section class="panel">${alertList()}</section>`;}
-function openReport(id){const r=reportById(id);if(!r)return;$('#report-content').innerHTML=`<div class="eyebrow">INTELLIGENCE REPORT</div><h2>${escape(r.title)}</h2><div class="meta">${badges(r)}</div><p>${escape(r.details)}</p><div class="detail-grid"><div class="panel">Priority score<strong>${r.score}/100</strong></div><div class="panel">Classification confidence<strong>${Math.round(r.confidence*100)}%</strong></div><div class="panel">Related coverage<strong>${escape(r.relatedCount)}</strong></div></div><h3>Summary</h3><p>${escape(r.summary)}</p><h3>Suggested review</h3><p>${escape(r.recommendation)}</p><h3>Extracted indicators</h3><p>${r.indicators.length?r.indicators.map(escape).join('<br>'):'No indicators extracted.'}</p><h3>Sources & related coverage</h3><p>${escape(sourceName(r))}</p>${r.sourceIds.map(id=>{const s=data.sources.find(x=>x.id===id);return s?`<p>${safeLink(s.url,s.name)}</p>`:'';}).join('')}<p>Grouped coverage count: ${escape(r.relatedCount)}. Linked sources are those supplied with this report.</p><p><time>Published ${escape(date(r.publishedAt))}</time></p>${window.CYBERHEAD_CONFIG.mode==='mock'?'<div class="notice">Fictional demonstration report. Scores and indicators are sample data.</div>':''}<button data-save="${escape(r.id)}">${saved.includes(r.id)?'Remove from saved':'Save story ♧'}</button>`;if(!$('#report-dialog').open)$('#report-dialog').showModal();}
-document.addEventListener('click',e=>{const open=e.target.closest('[data-open]');if(open)openReport(open.dataset.open);const save=e.target.closest('[data-save]');if(save){const id=save.dataset.save;saved=saved.includes(id)?saved.filter(v=>v!==id):[...saved,id];try{localStorage.setItem('cyberhead.saved',JSON.stringify(saved));}catch{$('#status').textContent='Browser storage is unavailable. Saved stories will last only for this session.';}save.textContent=saved.includes(id)?'Remove from saved':'Save story ♧';render();}if(e.target.id==='reset'){query='';severity=category='All';sort='priority';$('#search').value='';render();}if(e.target.id==='retry')load();});
-document.addEventListener('change',e=>{if(e.target.id==='severity')severity=e.target.value;else if(e.target.id==='category')category=e.target.value;else if(e.target.id==='sort')sort=e.target.value;else return;render();});
-$('#search').addEventListener('input',e=>{query=e.target.value;if(!['reports','saved'].includes(page()))location.hash='reports';else render();});
-$('#alerts-shortcut').onclick=()=>location.hash='alerts';$('.close').onclick=()=>$('#report-dialog').close();$('#report-dialog').addEventListener('click',e=>{if(e.target===$('#report-dialog')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();}});
-window.addEventListener('hashchange',render);$('#year').textContent=new Date().getFullYear();setInterval(()=>{if($('#clock'))$('#clock').textContent=new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});},30000);
-async function load(){$('#status').textContent='Loading your briefing…';try{data=await CyberheadAPI.getDashboard();$('#status').textContent='';$('#mode').textContent=window.CYBERHEAD_CONFIG.mode==='mock'?'DEMO DATA · NO LIVE MONITORING':`API DATA · UPDATED ${date(data.generatedAt)}`;render();}catch(error){$('#status').innerHTML=`Unable to load reports. ${escape(error.name==='AbortError'?'The request timed out.':error.message)} <button id="retry">Retry</button>`;}}
-load();
+  "use strict";
+
+  /* =========================================================
+     BASIC HELPERS
+     ========================================================= */
+
+  const $ = (selector) =>
+    document.querySelector(selector);
+
+
+  const escape = (value) =>
+    String(value ?? "").replace(
+      /[&<>"']/g,
+      (character) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[character]
+    );
+
+
+  const withBreaks = (value) =>
+    escape(value ?? "").replace(
+      /\n/g,
+      "<br>"
+    );
+
+
+  function parseDate(value) {
+
+    const result =
+      new Date(value);
+
+    return Number.isNaN(
+      result.getTime()
+    )
+      ? null
+      : result;
+  }
+
+
+  function formatDate(value) {
+
+    const result =
+      parseDate(value);
+
+    if (!result) {
+      return "Date unavailable";
+    }
+
+    return result.toLocaleDateString(
+      "en-GB",
+      {
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+      }
+    );
+  }
+
+
+  function formatTime(value) {
+
+    const result =
+      parseDate(value);
+
+    if (!result) {
+      return "--:--";
+    }
+
+    return result.toLocaleTimeString(
+      "en-GB",
+      {
+        hour: "2-digit",
+        minute: "2-digit"
+      }
+    );
+  }
+
+
+  function formatDateTime(value) {
+
+    const result =
+      parseDate(value);
+
+    if (!result) {
+      return "Not available";
+    }
+
+    return (
+      result.toLocaleDateString(
+        "en-GB",
+        {
+          day: "2-digit",
+          month: "short",
+          year: "numeric"
+        }
+      )
+      +
+      " · "
+      +
+      result.toLocaleTimeString(
+        "en-GB",
+        {
+          hour: "2-digit",
+          minute: "2-digit"
+        }
+      )
+    );
+  }
+
+
+  /* =========================================================
+     ROUTES
+     ========================================================= */
+
+  const routes = [
+
+    [
+      "briefing",
+      "⌂",
+      "Daily Briefing"
+    ],
+
+    [
+      "alerts",
+      "△",
+      "Threats & Alerts"
+    ],
+
+    [
+      "reports",
+      "▤",
+      "All Reports"
+    ],
+
+    [
+      "saved",
+      "♧",
+      "Saved Stories"
+    ],
+
+    [
+      "analysis",
+      "▥",
+      "Analysis"
+    ],
+
+    [
+      "sources",
+      "⚒",
+      "Sources"
+    ],
+
+    [
+      "about",
+      "ⓘ",
+      "About"
+    ]
+  ];
+
+
+  /* =========================================================
+     GENERAL LIVE DATA
+     ========================================================= */
+
+  let liveBriefing =
+    null;
+
+  let liveStats =
+    null;
+
+  let liveLoadError =
+    null;
+
+  let liveLoading =
+    false;
+
+
+  /* =========================================================
+     REPORT STATE
+     ========================================================= */
+
+  let articleResponse =
+    null;
+
+  let articlesLoading =
+    false;
+
+  let articlesError =
+    null;
+
+  const ARTICLE_LIMIT =
+    20;
+
+  let articleOffset =
+    0;
+
+  let query =
+    "";
+
+  let severity =
+    "All";
+
+  let category =
+    "All";
+
+  let sort =
+    "latest";
+
+  let searchTimer =
+    null;
+
+
+  /* =========================================================
+     ALERT STATE
+     ========================================================= */
+
+  let criticalAlertsResponse =
+    null;
+
+  let highAlertsResponse =
+    null;
+
+  let alertsLoading =
+    false;
+
+  let alertsError =
+    null;
+
+
+  /* =========================================================
+     SAVED STORIES STATE
+     ========================================================= */
+
+  let saved =
+    [];
+
+  let savedArticles =
+    [];
+
+  let savedLoading =
+    false;
+
+  let savedError =
+    null;
+
+  let savedSeverityFilter =
+    "All";
+
+
+  /* =========================================================
+     SOURCES STATE
+     ========================================================= */
+
+  let sourcesResponse =
+    null;
+
+  let sourcesLoading =
+    false;
+
+  let sourcesError =
+    null;
+
+  let sourceDraftName =
+    "";
+
+  let sourceDraftUrl =
+    "";
+
+  let sourceTestResult =
+    null;
+
+  let sourceTestLoading =
+    false;
+
+  let sourceAddLoading =
+    false;
+
+  let sourceToggleLoadingId =
+    null;
+
+  let sourceMessage =
+    "";
+
+  let sourceMessageType =
+    "success";
+
+
+  /* =========================================================
+     SAVED STORIES STORAGE
+     ========================================================= */
+
+  try {
+
+    const stored =
+      JSON.parse(
+        localStorage.getItem(
+          "cyberhead.saved"
+        )
+        ||
+        "[]"
+      );
+
+
+    if (
+      Array.isArray(stored)
+    ) {
+
+      saved =
+        stored.map(
+          (value) =>
+            String(value)
+        );
+    }
+
+  } catch {
+
+    saved =
+      [];
+  }
+
+
+  function persistSaved() {
+
+    try {
+
+      localStorage.setItem(
+        "cyberhead.saved",
+        JSON.stringify(saved)
+      );
+
+      return true;
+
+    } catch {
+
+      $("#status").textContent =
+        "Browser storage is unavailable. Saved stories may not persist.";
+
+      return false;
+    }
+  }
+
+
+  /* =========================================================
+     CURRENT PAGE
+     ========================================================= */
+
+  function page() {
+
+    const hash =
+      location.hash.slice(1);
+
+
+    return routes.some(
+      (route) =>
+        route[0] === hash
+    )
+      ? hash
+      : "briefing";
+  }
+
+
+  /* =========================================================
+     ARTICLE HELPERS
+     ========================================================= */
+
+  function liveArticleId(article) {
+
+    return String(
+      article.article_id
+      ??
+      article.id
+    );
+  }
+
+
+  function liveBadges(article) {
+
+    return `
+
+      <span
+        class="badge severity ${escape(
+          article.severity
+        )}"
+      >
+        ${escape(
+          String(
+            article.severity
+            ??
+            ""
+          ).toUpperCase()
+        )}
+      </span>
+
+      <span class="badge">
+        ${escape(
+          String(
+            article.category
+            ??
+            "Uncategorised"
+          ).toUpperCase()
+        )}
+      </span>
+    `;
+  }
+
+
+  function liveArt(article) {
+
+    const imageClass =
+      article.severity === "Critical"
+        ? "skull"
+        : "";
+
+
+    return `
+
+      <div
+        class="art ${imageClass}"
+        role="img"
+        aria-label="Cybersecurity threat illustration"
+      ></div>
+    `;
+  }
+
+
+  /* =========================================================
+     ARTICLE CARD
+     ========================================================= */
+
+  function liveCard(
+    article,
+    featured = false
+  ) {
+
+    const articleId =
+      liveArticleId(article);
+
+
+    const published =
+      article.published_at
+      ||
+      article.collected_at;
+
+
+    return `
+
+      <article
+        class="card ${
+          featured
+            ? "featured"
+            : ""
+        }"
+      >
+
+        ${liveArt(article)}
+
+        <div>
+
+          <div class="meta">
+
+            ${liveBadges(article)}
+
+            <time>
+              ${escape(
+                formatDate(
+                  published
+                )
+              )}
+            </time>
+
+          </div>
+
+          <h3>
+            ${escape(
+              article.title
+            )}
+          </h3>
+
+          <p>
+            ${escape(
+              article.summary
+              ||
+              "Summary unavailable."
+            )}
+          </p>
+
+          <div class="actions">
+
+            <span
+              class="
+                eyebrow
+                severity-score
+                ${escape(
+                  article.severity
+                )}
+              "
+            >
+
+              CYBERHEAD SEVERITY SCORE
+
+              ${escape(
+                article.severity_score
+              )}/100
+
+            </span>
+
+            <button
+              data-live-open="${escape(
+                articleId
+              )}"
+            >
+              Read report →
+            </button>
+
+          </div>
+
+          <div class="related">
+
+            Source:
+
+            ${escape(
+              article.source
+              ||
+              "Unknown"
+            )}
+
+          </div>
+
+        </div>
+
+      </article>
+    `;
+  }
+
+
+  /* =========================================================
+     GENERIC PAGE HEADER
+     ========================================================= */
+
+  function pageIntro(
+    title,
+    subtitle
+  ) {
+
+    return `
+
+      <div class="intro">
+
+        <div>
+
+          <div class="eyebrow">
+            CYBERHEAD NEWS
+          </div>
+
+          <h1>
+            ${title}
+          </h1>
+
+          <p>
+            ${escape(
+              subtitle
+            )}
+          </p>
+
+        </div>
+
+        <div class="clock">
+
+          ${escape(
+            formatDate(
+              new Date()
+            )
+          )}
+
+          <strong id="clock">
+
+            ${
+              new Date()
+                .toLocaleTimeString(
+                  "en-GB",
+                  {
+                    hour:
+                      "2-digit",
+
+                    minute:
+                      "2-digit"
+                  }
+                )
+            }
+
+          </strong>
+
+        </div>
+
+      </div>
+    `;
+  }
+
+
+  /* =========================================================
+     DAILY BRIEFING
+     ========================================================= */
+
+  function liveBriefingIntro() {
+
+    if (!liveBriefing) {
+
+      return `
+
+        <div class="intro">
+
+          <div>
+
+            <div class="eyebrow">
+              CYBERHEAD INTELLIGENCE
+            </div>
+
+            <h1>
+              Your
+              <em>Daily Briefing</em>
+            </h1>
+
+            <p>
+              Rolling cybersecurity briefing
+              covering the previous 24 hours.
+            </p>
+
+          </div>
+
+        </div>
+      `;
+    }
+
+
+    return `
+
+      <div class="intro">
+
+        <div>
+
+          <div class="eyebrow">
+            CYBERHEAD INTELLIGENCE
+          </div>
+
+          <h1>
+            Your
+            <em>Daily Briefing</em>
+          </h1>
+
+          <p>
+
+            ${escape(
+              liveBriefing
+                .total_considered
+            )}
+
+            analysed article(s)
+            from the rolling previous
+            24 hours.
+
+          </p>
+
+        </div>
+
+        <div class="clock">
+
+          LAST UPDATED
+
+          <strong>
+
+            ${escape(
+              formatTime(
+                liveBriefing
+                  .generated_at
+              )
+            )}
+
+          </strong>
+
+          <span>
+
+            ${escape(
+              formatDate(
+                liveBriefing
+                  .generated_at
+              )
+            )}
+
+          </span>
+
+        </div>
+
+      </div>
+    `;
+  }
+
+
+  function briefingOverviewButton(
+    level,
+    count
+  ) {
+
+    return `
+
+      <button
+        class="brief-filter-row"
+        data-briefing-severity="${escape(
+          level
+        )}"
+      >
+
+        <span
+          class="
+            brief-filter-name
+            severity-text-${escape(
+              level
+            )}
+          "
+        >
+          ${escape(level)}
+        </span>
+
+        <strong>
+          ${escape(
+            count ?? 0
+          )}
+        </strong>
+
+        <span aria-hidden="true">
+          →
+        </span>
+
+      </button>
+    `;
+  }
+
+
+  function briefingCategoryButton(
+    name,
+    count
+  ) {
+
+    return `
+
+      <button
+        class="brief-filter-row"
+        data-briefing-category="${escape(
+          name
+        )}"
+      >
+
+        <span class="brief-filter-name">
+          ${escape(name)}
+        </span>
+
+        <strong>
+          ${escape(count)}
+        </strong>
+
+        <span aria-hidden="true">
+          →
+        </span>
+
+      </button>
+    `;
+  }
+
+
+  function briefing() {
+
+    if (liveLoadError) {
+
+      return `
+
+        ${liveBriefingIntro()}
+
+        <div class="empty">
+
+          <h2>
+            DAILY BRIEFING UNAVAILABLE
+          </h2>
+
+          <p>
+            ${escape(
+              liveLoadError
+            )}
+          </p>
+
+          <button id="retry-live">
+            Retry connection
+          </button>
+
+        </div>
+      `;
+    }
+
+
+    if (!liveBriefing) {
+
+      return `
+
+        ${liveBriefingIntro()}
+
+        <div class="empty">
+          Loading Daily Briefing...
+        </div>
+      `;
+    }
+
+
+    const stories =
+      Array.isArray(
+        liveBriefing.articles
+      )
+        ? liveBriefing.articles
+        : [];
+
+
+    const categories =
+      liveBriefing
+        .category_counts
+      ||
+      {};
+
+
+    return `
+
+      ${liveBriefingIntro()}
+
+      <div class="layout">
+
+        <div>
+
+          <div class="section-label">
+            TOP PRIORITY THREAT
+          </div>
+
+          ${
+            stories[0]
+
+              ? liveCard(
+                  stories[0],
+                  true
+                )
+
+              : `
+
+                <div class="empty">
+
+                  No qualifying threats
+                  were found in the
+                  previous 24 hours.
+
+                </div>
+              `
+          }
+
+          ${
+            stories.length > 1
+
+              ? `
+
+                <div class="section-label">
+                  MORE PRIORITY THREATS
+                </div>
+
+                <div class="grid">
+
+                  ${
+                    stories
+                      .slice(1)
+                      .map(
+                        (article) =>
+                          liveCard(
+                            article
+                          )
+                      )
+                      .join("")
+                  }
+
+                </div>
+              `
+
+              : ""
+          }
+
+        </div>
+
+
+        <aside class="rail">
+
+          <section class="panel">
+
+            <h2>
+              △ 24-HOUR THREAT OVERVIEW
+            </h2>
+
+            <div class="brief-filter-list">
+
+              ${
+                briefingOverviewButton(
+                  "Critical",
+                  liveBriefing
+                    .critical_count
+                )
+              }
+
+              ${
+                briefingOverviewButton(
+                  "High",
+                  liveBriefing
+                    .high_count
+                )
+              }
+
+              ${
+                briefingOverviewButton(
+                  "Medium",
+                  liveBriefing
+                    .medium_count
+                )
+              }
+
+              ${
+                briefingOverviewButton(
+                  "Low",
+                  liveBriefing
+                    .low_count
+                )
+              }
+
+            </div>
+
+          </section>
+
+
+          <section class="panel">
+
+            <h2>
+              ▤ TODAY'S BRIEFING
+            </h2>
+
+            ${
+              stories
+                .map(
+                  (
+                    article,
+                    index
+                  ) => `
+
+                    <button
+                      class="brief-item"
+                      data-live-open="${escape(
+                        liveArticleId(
+                          article
+                        )
+                      )}"
+                    >
+
+                      <span class="number">
+
+                        ${String(
+                          index + 1
+                        ).padStart(
+                          2,
+                          "0"
+                        )}
+
+                      </span>
+
+                      ${escape(
+                        article.title
+                      )}
+
+                    </button>
+                  `
+                )
+                .join("")
+            }
+
+          </section>
+
+
+          <section class="panel">
+
+            <h2>
+              ▥ CATEGORIES
+            </h2>
+
+            <div class="brief-filter-list">
+
+              ${
+                Object.entries(
+                  categories
+                )
+                  .map(
+                    ([
+                      name,
+                      total
+                    ]) =>
+                      briefingCategoryButton(
+                        name,
+                        total
+                      )
+                  )
+                  .join("")
+
+                ||
+
+                "<p>No category data.</p>"
+              }
+
+            </div>
+
+          </section>
+
+        </aside>
+
+      </div>
+    `;
+  }
+
+
+  /* =========================================================
+     ALERTS
+     ========================================================= */
+
+  function isArticleInCurrentWindow(
+    article
+  ) {
+
+    const articleDate =
+      parseDate(
+        article.published_at
+        ||
+        article.collected_at
+      );
+
+
+    if (!articleDate) {
+      return false;
+    }
+
+
+    let start =
+      parseDate(
+        liveBriefing
+          ?.period_start
+      );
+
+
+    let end =
+      parseDate(
+        liveBriefing
+          ?.period_end
+      );
+
+
+    if (
+      !start
+      ||
+      !end
+    ) {
+
+      end =
+        new Date();
+
+
+      start =
+        new Date(
+          end.getTime()
+          -
+          24
+          *
+          60
+          *
+          60
+          *
+          1000
+        );
+    }
+
+
+    return (
+      articleDate >= start
+      &&
+      articleDate <= end
+    );
+  }
+
+
+  function currentThreatLevel() {
+
+    if (!liveBriefing) {
+      return "Unknown";
+    }
+
+
+    if (
+      liveBriefing
+        .critical_count > 0
+    ) {
+
+      return "Critical";
+    }
+
+
+    if (
+      liveBriefing
+        .high_count > 0
+    ) {
+
+      return "High";
+    }
+
+
+    if (
+      liveBriefing
+        .medium_count > 0
+    ) {
+
+      return "Medium";
+    }
+
+
+    return "Low";
+  }
+
+
+  function alertCard(article) {
+
+    const published =
+      article.published_at
+      ||
+      article.collected_at;
+
+
+    return `
+
+      <article class="panel">
+
+        <div class="meta">
+
+          ${liveBadges(article)}
+
+          <time>
+
+            ${escape(
+              formatDate(
+                published
+              )
+            )}
+
+            ·
+
+            ${escape(
+              formatTime(
+                published
+              )
+            )}
+
+          </time>
+
+        </div>
+
+        <h3>
+          ${escape(
+            article.title
+          )}
+        </h3>
+
+        <p>
+          ${escape(
+            article.summary
+            ||
+            "Summary unavailable."
+          )}
+        </p>
+
+        <p>
+
+          Source:
+
+          <strong>
+            ${escape(
+              article.source
+              ||
+              "Unknown"
+            )}
+          </strong>
+
+        </p>
+
+        <div class="actions">
+
+          <span
+            class="
+              eyebrow
+              severity-score
+              ${escape(
+                article.severity
+              )}
+            "
+          >
+
+            CYBERHEAD SEVERITY SCORE
+
+            ${escape(
+              article.severity_score
+            )}/100
+
+          </span>
+
+          <button
+            data-live-open="${escape(
+              liveArticleId(
+                article
+              )
+            )}"
+          >
+            Read report →
+          </button>
+
+        </div>
+
+      </article>
+    `;
+  }
+
+
+  function alertsPage() {
+
+    const threatLevel =
+      currentThreatLevel();
+
+
+    if (alertsLoading) {
+
+      return `
+
+        ${
+          pageIntro(
+            "Threats <em>& Alerts</em>",
+            "Monitoring Critical and High threats from the rolling previous 24 hours."
+          )
+        }
+
+        <div class="empty">
+          Loading current threats...
+        </div>
+      `;
+    }
+
+
+    if (alertsError) {
+
+      return `
+
+        ${
+          pageIntro(
+            "Threats <em>& Alerts</em>",
+            "Current cybersecurity threat monitoring."
+          )
+        }
+
+        <div class="empty">
+
+          <h2>
+            ALERT DATA UNAVAILABLE
+          </h2>
+
+          <p>
+            ${escape(
+              alertsError
+            )}
+          </p>
+
+          <button id="retry-alerts">
+            Retry
+          </button>
+
+        </div>
+      `;
+    }
+
+
+    const criticalArticles =
+      (
+        criticalAlertsResponse
+          ?.articles
+        ||
+        []
+      )
+        .filter(
+          isArticleInCurrentWindow
+        );
+
+
+    const highArticles =
+      (
+        highAlertsResponse
+          ?.articles
+        ||
+        []
+      )
+        .filter(
+          isArticleInCurrentWindow
+        );
+
+
+    return `
+
+      <div class="intro">
+
+        <div>
+
+          <div class="eyebrow">
+            CYBERHEAD THREAT MONITOR
+          </div>
+
+          <h1>
+            Threats
+            <em>& Alerts</em>
+          </h1>
+
+          <p>
+
+            Current Critical and High
+            cybersecurity threats detected
+            within the rolling 24-hour
+            briefing window.
+
+          </p>
+
+        </div>
+
+        <div class="clock threat-level-box">
+
+          HIGHEST ACTIVE SEVERITY
+
+          <span
+            class="
+              threat-level-badge
+              ${escape(
+                threatLevel
+              )}
+            "
+          >
+
+            ${escape(
+              threatLevel
+                .toUpperCase()
+            )}
+
+          </span>
+
+          <span class="demo">
+            LIVE THREAT DATA
+          </span>
+
+        </div>
+
+      </div>
+
+
+      <div class="stat-grid">
+
+        <div class="panel">
+
+          Critical · Last 24h
+
+          <strong>
+            ${escape(
+              liveBriefing
+                ?.critical_count
+              ||
+              0
+            )}
+          </strong>
+
+        </div>
+
+
+        <div class="panel">
+
+          High · Last 24h
+
+          <strong>
+            ${escape(
+              liveBriefing
+                ?.high_count
+              ||
+              0
+            )}
+          </strong>
+
+        </div>
+
+
+        <div class="panel">
+
+          Total analysed · Last 24h
+
+          <strong>
+            ${escape(
+              liveBriefing
+                ?.total_considered
+              ||
+              0
+            )}
+          </strong>
+
+        </div>
+
+      </div>
+
+
+      <div class="section-label">
+        URGENT CRITICAL THREATS
+      </div>
+
+      ${
+        criticalArticles.length
+
+          ? `
+
+            <div class="grid">
+
+              ${
+                criticalArticles
+                  .map(
+                    alertCard
+                  )
+                  .join("")
+              }
+
+            </div>
+          `
+
+          : `
+
+            <div class="empty">
+
+              No Critical threats were
+              detected in the current
+              24-hour monitoring window.
+
+            </div>
+          `
+      }
+
+
+      <div
+        class="section-label"
+        style="margin-top:24px;"
+      >
+        HIGH-PRIORITY THREATS
+      </div>
+
+      ${
+        highArticles.length
+
+          ? `
+
+            <div class="grid">
+
+              ${
+                highArticles
+                  .map(
+                    alertCard
+                  )
+                  .join("")
+              }
+
+            </div>
+          `
+
+          : `
+
+            <div class="empty">
+
+              No High-severity threats
+              were detected in the current
+              24-hour monitoring window.
+
+            </div>
+          `
+      }
+    `;
+  }
+
+
+  async function loadAlerts() {
+
+    if (alertsLoading) {
+      return;
+    }
+
+
+    alertsLoading =
+      true;
+
+    alertsError =
+      null;
+
+
+    if (
+      page() === "alerts"
+    ) {
+      render();
+    }
+
+
+    try {
+
+      const [
+        criticalResponse,
+        highResponse
+      ] =
+        await Promise.all([
+
+          CyberheadAPI
+            .getArticles({
+              severity:
+                "Critical",
+
+              sort:
+                "latest",
+
+              limit:
+                100,
+
+              offset:
+                0
+            }),
+
+          CyberheadAPI
+            .getArticles({
+              severity:
+                "High",
+
+              sort:
+                "latest",
+
+              limit:
+                100,
+
+              offset:
+                0
+            })
+
+        ]);
+
+
+      criticalAlertsResponse =
+        criticalResponse;
+
+
+      highAlertsResponse =
+        highResponse;
+
+
+    } catch (error) {
+
+      alertsError =
+        error.name === "AbortError"
+
+          ? "The alert request timed out."
+
+          : error.message;
+
+
+    } finally {
+
+      alertsLoading =
+        false;
+
+
+      if (
+        page() === "alerts"
+      ) {
+        render();
+      }
+    }
+  }
+
+
+  /* =========================================================
+     REPORTS
+     ========================================================= */
+
+  function getAvailableCategories() {
+
+    const statsCategories =
+      Object.keys(
+        liveStats
+          ?.category_distribution
+        ||
+        {}
+      );
+
+
+    if (
+      statsCategories.length
+    ) {
+
+      return statsCategories;
+    }
+
+
+    return [
+
+      "Vulnerabilities",
+
+      "Other cybersecurity news",
+
+      "Other malware",
+
+      "Data breaches",
+
+      "Phishing",
+
+      "Ransomware",
+
+      "DDoS"
+    ];
+  }
+
+
+  function options(
+    values,
+    current
+  ) {
+
+    return values
+      .map(
+        (value) => `
+
+          <option
+            value="${escape(
+              value
+            )}"
+            ${
+              value === current
+                ? "selected"
+                : ""
+            }
+          >
+            ${escape(value)}
+          </option>
+        `
+      )
+      .join("");
+  }
+
+
+  function reportsIntro() {
+
+    const total =
+      liveStats
+        ?.processed_articles
+
+      ??
+
+      articleResponse
+        ?.total
+
+      ??
+
+      0;
+
+
+    return `
+
+      <div class="intro">
+
+        <div>
+
+          <div class="eyebrow">
+            CYBERHEAD THREAT DATABASE
+          </div>
+
+          <h1>
+            All
+            <em>Reports</em>
+          </h1>
+
+          <p>
+
+            Browse
+
+            ${escape(total)}
+
+            processed cybersecurity reports.
+
+            Search, filter and sort results
+            directly from the CYBERHEAD database.
+
+          </p>
+
+        </div>
+
+        <div class="clock">
+
+          LIVE DATABASE
+
+          <strong>
+            ${escape(total)}
+          </strong>
+
+          <span>
+            PROCESSED REPORTS
+          </span>
+
+        </div>
+
+      </div>
+    `;
+  }
+
+
+  function reportsToolbar() {
+
+    return `
+
+      <div class="toolbar">
+
+        <label>
+
+          Severity
+
+          <select id="severity">
+
+            ${
+              options(
+                [
+                  "All",
+                  "Critical",
+                  "High",
+                  "Medium",
+                  "Low"
+                ],
+                severity
+              )
+            }
+
+          </select>
+
+        </label>
+
+
+        <label>
+
+          Category
+
+          <select id="category">
+
+            ${
+              options(
+                [
+                  "All",
+                  ...getAvailableCategories()
+                ],
+                category
+              )
+            }
+
+          </select>
+
+        </label>
+
+
+        <label>
+
+          Sort
+
+          <select id="sort">
+
+            <option
+              value="latest"
+              ${
+                sort === "latest"
+                  ? "selected"
+                  : ""
+              }
+            >
+              Newest first
+            </option>
+
+            <option
+              value="severity"
+              ${
+                sort === "severity"
+                  ? "selected"
+                  : ""
+              }
+            >
+              Most severe first
+            </option>
+
+          </select>
+
+        </label>
+
+
+        <button id="reset-reports">
+          Reset filters
+        </button>
+
+      </div>
+    `;
+  }
+
+
+  function reportsPagination() {
+
+    if (!articleResponse) {
+      return "";
+    }
+
+
+    const total =
+      articleResponse.total;
+
+
+    const returned =
+      articleResponse.returned;
+
+
+    const start =
+      total === 0
+
+        ? 0
+
+        : articleOffset + 1;
+
+
+    const end =
+      Math.min(
+        articleOffset
+        +
+        returned,
+        total
+      );
+
+
+    const hasPrevious =
+      articleOffset > 0;
+
+
+    const hasNext =
+      articleOffset
+      +
+      returned
+      <
+      total;
+
+
+    return `
+
+      <div
+        class="toolbar"
+        style="
+          margin-top:20px;
+          justify-content:space-between;
+        "
+      >
+
+        <span>
+
+          Showing
+
+          ${escape(start)}
+
+          -
+
+          ${escape(end)}
+
+          of
+
+          ${escape(total)}
+
+          reports
+
+        </span>
+
+        <div>
+
+          <button
+            id="previous-page"
+            ${
+              !hasPrevious
+                ? "disabled"
+                : ""
+            }
+          >
+            ← Previous
+          </button>
+
+          <button
+            id="next-page"
+            ${
+              !hasNext
+                ? "disabled"
+                : ""
+            }
+          >
+            Next →
+          </button>
+
+        </div>
+
+      </div>
+    `;
+  }
+
+
+  function reportsPage() {
+
+    if (articlesLoading) {
+
+      return `
+
+        ${reportsIntro()}
+
+        ${reportsToolbar()}
+
+        <div class="empty">
+          Loading cybersecurity reports...
+        </div>
+      `;
+    }
+
+
+    if (articlesError) {
+
+      return `
+
+        ${reportsIntro()}
+
+        ${reportsToolbar()}
+
+        <div class="empty">
+
+          <h2>
+            REPORTS UNAVAILABLE
+          </h2>
+
+          <p>
+            ${escape(
+              articlesError
+            )}
+          </p>
+
+          <button id="retry-reports">
+            Retry
+          </button>
+
+        </div>
+      `;
+    }
+
+
+    if (!articleResponse) {
+
+      return `
+
+        ${reportsIntro()}
+
+        ${reportsToolbar()}
+
+        <div class="empty">
+          Loading reports...
+        </div>
+      `;
+    }
+
+
+    const articles =
+      Array.isArray(
+        articleResponse.articles
+      )
+        ? articleResponse.articles
+        : [];
+
+
+    return `
+
+      ${reportsIntro()}
+
+      ${reportsToolbar()}
+
+      <div class="section-label">
+        SEARCH RESULTS
+      </div>
+
+      ${
+        articles.length
+
+          ? `
+
+            <div class="grid">
+
+              ${
+                articles
+                  .map(
+                    (article) =>
+                      liveCard(
+                        article
+                      )
+                  )
+                  .join("")
+              }
+
+            </div>
+          `
+
+          : `
+
+            <div class="empty">
+
+              <h2>
+                NO MATCHING REPORTS
+              </h2>
+
+              <p>
+
+                Try changing the search,
+                category or severity filters.
+
+              </p>
+
+            </div>
+          `
+      }
+
+      ${reportsPagination()}
+    `;
+  }
+
+
+  async function loadArticles() {
+
+    if (articlesLoading) {
+      return;
+    }
+
+
+    articlesLoading =
+      true;
+
+    articlesError =
+      null;
+
+
+    if (
+      page() === "reports"
+    ) {
+      render();
+    }
+
+
+    try {
+
+      articleResponse =
+        await CyberheadAPI
+          .getArticles({
+
+            category:
+              category === "All"
+                ? ""
+                : category,
+
+            severity:
+              severity === "All"
+                ? ""
+                : severity,
+
+            search:
+              query.trim(),
+
+            sort,
+
+            limit:
+              ARTICLE_LIMIT,
+
+            offset:
+              articleOffset
+          });
+
+
+    } catch (error) {
+
+      articlesError =
+        error.name === "AbortError"
+
+          ? "The article request timed out."
+
+          : error.message;
+
+
+    } finally {
+
+      articlesLoading =
+        false;
+
+
+      if (
+        page() === "reports"
+      ) {
+        render();
+      }
+    }
+  }
+
+
+  /* =========================================================
+     SAVED STORIES
+     ========================================================= */
+
+  async function loadSavedArticles() {
+
+    if (savedLoading) {
+      return;
+    }
+
+
+    savedLoading =
+      true;
+
+    savedError =
+      null;
+
+
+    if (
+      page() === "saved"
+    ) {
+      render();
+    }
+
+
+    if (!saved.length) {
+
+      savedArticles =
+        [];
+
+      savedLoading =
+        false;
+
+
+      if (
+        page() === "saved"
+      ) {
+        render();
+      }
+
+      return;
+    }
+
+
+    try {
+
+      const results =
+        await Promise.allSettled(
+
+          saved.map(
+            (id) =>
+              CyberheadAPI
+                .getArticleDetail(id)
+          )
+        );
+
+
+      savedArticles =
+        results
+          .filter(
+            (result) =>
+              result.status ===
+              "fulfilled"
+          )
+          .map(
+            (result) =>
+              result.value
+          );
+
+
+      const validIds =
+        new Set(
+
+          savedArticles.map(
+            (article) =>
+              String(
+                article.id
+              )
+          )
+        );
+
+
+      const cleanedSaved =
+        saved.filter(
+          (id) =>
+            validIds.has(
+              String(id)
+            )
+        );
+
+
+      if (
+        cleanedSaved.length
+        !==
+        saved.length
+      ) {
+
+        saved =
+          cleanedSaved;
+
+        persistSaved();
+      }
+
+
+    } catch (error) {
+
+      savedError =
+        error.name === "AbortError"
+
+          ? "The saved-story request timed out."
+
+          : error.message;
+
+
+    } finally {
+
+      savedLoading =
+        false;
+
+
+      if (
+        page() === "saved"
+      ) {
+        render();
+      }
+    }
+  }
+
+
+  function savedCount(level) {
+
+    return savedArticles
+      .filter(
+        (article) =>
+          article.severity === level
+      )
+      .length;
+  }
+
+
+  function savedFilterCard(
+    label,
+    count,
+    value
+  ) {
+
+    const active =
+      savedSeverityFilter
+      === value;
+
+
+    return `
+
+      <button
+        class="
+          saved-filter-card
+          ${escape(value)}
+          ${
+            active
+              ? "active"
+              : ""
+          }
+        "
+        data-saved-filter="${escape(
+          value
+        )}"
+      >
+
+        <span>
+          ${escape(label)}
+        </span>
+
+        <strong>
+          ${escape(count)}
+        </strong>
+
+      </button>
+    `;
+  }
+
+
+  function savedCard(article) {
+
+    const articleId =
+      liveArticleId(article);
+
+
+    const published =
+      article.published_at
+      ||
+      article.collected_at;
+
+
+    return `
+
+      <article class="card">
+
+        ${liveArt(article)}
+
+        <div>
+
+          <div class="meta">
+
+            ${liveBadges(article)}
+
+            <time>
+              ${escape(
+                formatDate(
+                  published
+                )
+              )}
+            </time>
+
+          </div>
+
+          <h3>
+            ${escape(
+              article.title
+            )}
+          </h3>
+
+          <p>
+            ${escape(
+              article.summary
+              ||
+              "Summary unavailable."
+            )}
+          </p>
+
+          <div class="actions">
+
+            <span
+              class="
+                eyebrow
+                severity-score
+                ${escape(
+                  article.severity
+                )}
+              "
+            >
+
+              CYBERHEAD SEVERITY SCORE
+
+              ${escape(
+                article.severity_score
+              )}/100
+
+            </span>
+
+            <button
+              data-live-open="${escape(
+                articleId
+              )}"
+            >
+              Read report →
+            </button>
+
+          </div>
+
+          <div class="related">
+
+            Source:
+
+            ${escape(
+              article.source
+              ||
+              "Unknown"
+            )}
+
+            <br>
+
+            <button
+              class="text-button"
+              data-remove-saved="${escape(
+                articleId
+              )}"
+            >
+              Remove from saved ♧
+            </button>
+
+          </div>
+
+        </div>
+
+      </article>
+    `;
+  }
+
+
+  function savedPage() {
+
+    if (savedLoading) {
+
+      return `
+
+        ${
+          pageIntro(
+            "Saved <em>Stories</em>",
+            "Save important reports while browsing CYBERHEAD and return to them here."
+          )
+        }
+
+        <div class="empty">
+          Loading saved stories...
+        </div>
+      `;
+    }
+
+
+    if (savedError) {
+
+      return `
+
+        ${
+          pageIntro(
+            "Saved <em>Stories</em>",
+            "Save important reports while browsing CYBERHEAD and return to them here."
+          )
+        }
+
+        <div class="empty">
+
+          <h2>
+            SAVED STORIES UNAVAILABLE
+          </h2>
+
+          <p>
+            ${escape(
+              savedError
+            )}
+          </p>
+
+          <button id="retry-saved">
+            Retry
+          </button>
+
+        </div>
+      `;
+    }
+
+
+    const filteredSaved =
+      savedSeverityFilter === "All"
+
+        ? savedArticles
+
+        : savedArticles.filter(
+            (article) =>
+              article.severity
+              ===
+              savedSeverityFilter
+          );
+
+
+    return `
+
+      ${
+        pageIntro(
+          "Saved <em>Stories</em>",
+          "Save important reports while browsing CYBERHEAD and return to them here."
+        )
+      }
+
+
+      <div class="saved-filter-grid">
+
+        ${
+          savedFilterCard(
+            "Saved Reports",
+            savedArticles.length,
+            "All"
+          )
+        }
+
+        ${
+          savedFilterCard(
+            "Critical",
+            savedCount(
+              "Critical"
+            ),
+            "Critical"
+          )
+        }
+
+        ${
+          savedFilterCard(
+            "High",
+            savedCount(
+              "High"
+            ),
+            "High"
+          )
+        }
+
+        ${
+          savedFilterCard(
+            "Medium",
+            savedCount(
+              "Medium"
+            ),
+            "Medium"
+          )
+        }
+
+        ${
+          savedFilterCard(
+            "Low",
+            savedCount(
+              "Low"
+            ),
+            "Low"
+          )
+        }
+
+      </div>
+
+
+      <div class="section-label">
+
+        ${
+          savedSeverityFilter === "All"
+
+            ? "YOUR SAVED REPORTS"
+
+            : `SAVED ${escape(
+                savedSeverityFilter
+                  .toUpperCase()
+              )} REPORTS`
+        }
+
+      </div>
+
+
+      ${
+        filteredSaved.length
+
+          ? `
+
+            <div class="grid">
+
+              ${
+                filteredSaved
+                  .map(
+                    savedCard
+                  )
+                  .join("")
+              }
+
+            </div>
+          `
+
+          : `
+
+            <div class="empty">
+
+              <h2>
+
+                ${
+                  savedArticles.length
+
+                    ? `NO SAVED ${escape(
+                        savedSeverityFilter
+                          .toUpperCase()
+                      )} REPORTS`
+
+                    : "NO SAVED STORIES YET"
+                }
+
+              </h2>
+
+              <p>
+
+                ${
+                  savedArticles.length
+
+                    ? "Choose another severity filter or save more reports."
+
+                    : "Open any CYBERHEAD report and select Save story ♧. It will appear here automatically."
+                }
+
+              </p>
+
+              ${
+                savedArticles.length
+
+                  ? ""
+
+                  : `
+
+                    <a href="#reports">
+                      Browse All Reports →
+                    </a>
+                  `
+              }
+
+            </div>
+          `
+      }
+    `;
+  }
+
+
+  /* =========================================================
+     ARTICLE DETAILS
+     ========================================================= */
+
+  async function openLiveArticle(
+    articleId
+  ) {
+
+    const dialog =
+      $("#report-dialog");
+
+
+    const content =
+      $("#report-content");
+
+
+    content.innerHTML = `
+
+      <div class="eyebrow">
+        LOADING INTELLIGENCE REPORT
+      </div>
+
+      <p>
+        Retrieving analysis...
+      </p>
+    `;
+
+
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+
+
+    try {
+
+      const article =
+        await CyberheadAPI
+          .getArticleDetail(
+            articleId
+          );
+
+
+      const tags =
+        Array.isArray(
+          article.threat_tags
+        )
+          ? article.threat_tags
+          : [];
+
+
+      const cves =
+        Array.isArray(
+          article.cves
+        )
+          ? article.cves
+          : [];
+
+
+      const tagText =
+        tags.length
+
+          ? tags
+              .map(
+                (item) =>
+
+                  typeof item ===
+                  "string"
+
+                    ? escape(item)
+
+                    : escape(
+                        item.tag
+                        ??
+                        item.name
+                        ??
+                        ""
+                      )
+              )
+              .filter(Boolean)
+              .join("<br>")
+
+          : "No threat tags detected.";
+
+
+      const cveText =
+        cves.length
+
+          ? cves
+              .map(
+                (item) => {
+
+                  let text =
+                    escape(
+                      item.cve_id
+                      ||
+                      "Unknown CVE"
+                    );
+
+
+                  if (
+                    item.max_cvss !== null
+                    &&
+                    item.max_cvss !== undefined
+                  ) {
+
+                    text +=
+                      ` · CVSS ${escape(
+                        item.max_cvss
+                      )}`;
+                  }
+
+
+                  if (
+                    item.cisa_kev
+                      ?.listed
+                  ) {
+
+                    text +=
+                      " · CISA KEV";
+                  }
+
+
+                  return text;
+                }
+              )
+              .join("<br>")
+
+          : "No CVEs detected.";
+
+
+      content.innerHTML = `
+
+        <div class="eyebrow">
+          CYBERHEAD INTELLIGENCE REPORT
+        </div>
+
+        <h2>
+          ${escape(
+            article.title
+          )}
+        </h2>
+
+        <div class="meta">
+          ${liveBadges(article)}
+        </div>
+
+
+        <div class="detail-grid">
+
+          <div class="panel">
+
+            CYBERHEAD Severity Score
+
+            <strong
+              class="
+                severity-score-value
+                ${escape(
+                  article.severity
+                )}
+              "
+            >
+              ${escape(
+                article.severity_score
+              )}/100
+            </strong>
+
+          </div>
+
+
+          <div class="panel">
+
+            Category
+
+            <strong>
+              ${escape(
+                article.category
+                ||
+                "Unknown"
+              )}
+            </strong>
+
+          </div>
+
+
+          <div class="panel">
+
+            CVEs Detected
+
+            <strong>
+              ${escape(
+                cves.length
+              )}
+            </strong>
+
+          </div>
+
+        </div>
+
+
+        <h3>
+          Summary
+        </h3>
+
+        <p>
+          ${escape(
+            article.summary
+            ||
+            "Summary unavailable."
+          )}
+        </p>
+
+
+        <h3>
+          Why it matters
+        </h3>
+
+        <p>
+          ${escape(
+            article.why_it_matters
+            ||
+            "No explanation available."
+          )}
+        </p>
+
+
+        <h3>
+          Defensive recommendations
+        </h3>
+
+        <p>
+          ${withBreaks(
+            article.recommendations
+            ||
+            "No recommendations available."
+          )}
+        </p>
+
+
+        <h3>
+          Severity evidence
+        </h3>
+
+        <p>
+          ${withBreaks(
+            article.severity_reason
+            ||
+            "No severity evidence available."
+          )}
+        </p>
+
+
+        <h3>
+          Threat indicators
+        </h3>
+
+        <p>
+          ${tagText}
+        </p>
+
+
+        <h3>
+          CVE intelligence
+        </h3>
+
+        <p>
+          ${cveText}
+        </p>
+
+
+        <h3>
+          Source
+        </h3>
+
+        <p>
+          ${escape(
+            article.source
+            ||
+            "Unknown"
+          )}
+        </p>
+
+
+        ${
+          article.url
+
+            ? `
+
+              <p>
+
+                ${
+                  safeLink(
+                    article.url,
+                    "Open original article"
+                  )
+                }
+
+              </p>
+            `
+
+            : ""
+        }
+
+
+        <p>
+
+          <time>
+
+            Published
+
+            ${escape(
+              formatDate(
+                article.published_at
+                ||
+                article.collected_at
+              )
+            )}
+
+          </time>
+
+        </p>
+
+
+        <button
+          data-save-live="${escape(
+            String(
+              article.id
+            )
+          )}"
+        >
+
+          ${
+            saved.includes(
+              String(
+                article.id
+              )
+            )
+
+              ? "Remove from saved"
+
+              : "Save story ♧"
+          }
+
+        </button>
+      `;
+
+
+    } catch (error) {
+
+      content.innerHTML = `
+
+        <div class="eyebrow">
+          REPORT ERROR
+        </div>
+
+        <h2>
+          Unable to load article
+        </h2>
+
+        <p>
+          ${escape(
+            error.message
+          )}
+        </p>
+      `;
+    }
+  }
+
+
+  /* =========================================================
+     SAFE LINKS
+     ========================================================= */
+
+  function safeLink(
+    url,
+    label
+  ) {
+
+    try {
+
+      const parsed =
+        new URL(url);
+
+
+      if (
+        [
+          "https:",
+          "http:"
+        ].includes(
+          parsed.protocol
+        )
+      ) {
+
+        return `
+
+          <a
+            href="${escape(
+              parsed.href
+            )}"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+
+            ${escape(label)}
+            ↗
+
+          </a>
+        `;
+      }
+
+    } catch {
+
+      // Invalid URL.
+    }
+
+
+    return `
+
+      <span>
+
+        ${escape(label)}
+        — source unavailable
+
+      </span>
+    `;
+  }
+
+
+  /* =========================================================
+     ANALYSIS
+     ========================================================= */
+
+  function analysisSeverityCard(
+    level,
+    count
+  ) {
+
+    return `
+
+      <button
+        class="
+          analysis-stat-card
+          severity-analysis
+          ${escape(level)}
+        "
+        data-analysis-severity="${escape(
+          level
+        )}"
+      >
+
+        <span>
+          ${escape(level)}
+        </span>
+
+        <strong>
+          ${escape(
+            count ?? 0
+          )}
+        </strong>
+
+        <small>
+          VIEW REPORTS →
+        </small>
+
+      </button>
+    `;
+  }
+
+
+  function analysisCategoryRow(
+    name,
+    count,
+    maximum
+  ) {
+
+    const percentage =
+      maximum > 0
+
+        ? (
+            Number(count)
+            /
+            Number(maximum)
+            *
+            100
+          )
+
+        : 0;
+
+
+    return `
+
+      <button
+        class="analysis-category-row"
+        data-analysis-category="${escape(
+          name
+        )}"
+      >
+
+        <span class="analysis-category-name">
+          ${escape(name)}
+        </span>
+
+
+        <span class="analysis-category-bar">
+
+          <span
+            style="
+              width:${Math.max(
+                3,
+                percentage
+              )}%;
+            "
+          ></span>
+
+        </span>
+
+
+        <strong>
+          ${escape(count)}
+        </strong>
+
+
+        <span class="analysis-arrow">
+          →
+        </span>
+
+      </button>
+    `;
+  }
+
+
+  function analysis() {
+
+    if (!liveStats) {
+
+      return `
+
+        ${
+          pageIntro(
+            "Threat <em>Analysis</em>",
+            "Loading live CYBERHEAD threat intelligence statistics."
+          )
+        }
+
+        <div class="empty">
+          Loading analysis...
+        </div>
+      `;
+    }
+
+
+    const severityData =
+      liveStats
+        .severity_distribution
+      ||
+      {};
+
+
+    const categoryData =
+      liveStats
+        .category_distribution
+      ||
+      {};
+
+
+    const last24 =
+      liveStats
+        .last_24_hours
+      ||
+      {};
+
+
+    const last24Severity =
+      last24.severity
+      ||
+      {};
+
+
+    const processed =
+      Number(
+        liveStats
+          .processed_articles
+        ||
+        0
+      );
+
+
+    const totalCollected =
+      Number(
+        liveStats
+          .total_articles
+        ||
+        0
+      );
+
+
+    const categoryEntries =
+      Object.entries(
+        categoryData
+      )
+        .sort(
+          (
+            first,
+            second
+          ) =>
+            Number(
+              second[1]
+            )
+            -
+            Number(
+              first[1]
+            )
+        );
+
+
+    const maximumCategory =
+      categoryEntries.length
+
+        ? Math.max(
+            ...categoryEntries.map(
+              ([
+                ,
+                count
+              ]) =>
+                Number(count)
+            )
+          )
+
+        : 0;
+
+
+    let highestSeverity =
+      "Low";
+
+
+    if (
+      Number(
+        last24Severity.Critical
+        ||
+        0
+      )
+      >
+      0
+    ) {
+
+      highestSeverity =
+        "Critical";
+
+    } else if (
+      Number(
+        last24Severity.High
+        ||
+        0
+      )
+      >
+      0
+    ) {
+
+      highestSeverity =
+        "High";
+
+    } else if (
+      Number(
+        last24Severity.Medium
+        ||
+        0
+      )
+      >
+      0
+    ) {
+
+      highestSeverity =
+        "Medium";
+    }
+
+
+    return `
+
+      <div class="intro">
+
+        <div>
+
+          <div class="eyebrow">
+            CYBERHEAD ANALYTICS
+          </div>
+
+          <h1>
+            Threat
+            <em>Analysis</em>
+          </h1>
+
+          <p>
+
+            Live analysis of processed
+            cybersecurity reports,
+            severity levels and threat
+            categories.
+
+          </p>
+
+        </div>
+
+
+        <div class="clock analysis-threat-box">
+
+          HIGHEST ACTIVE SEVERITY
+
+          <span
+            class="
+              threat-level-badge
+              ${escape(
+                highestSeverity
+              )}
+            "
+          >
+
+            ${escape(
+              highestSeverity
+                .toUpperCase()
+            )}
+
+          </span>
+
+          <span class="demo">
+            ROLLING 24 HOURS
+          </span>
+
+        </div>
+
+      </div>
+
+
+      <div class="analysis-overview-grid">
+
+        <div class="panel analysis-overview-card">
+
+          <span>
+            PROCESSED REPORTS
+          </span>
+
+          <strong>
+            ${escape(
+              processed
+            )}
+          </strong>
+
+          <small>
+            Fully analysed by CYBERHEAD
+          </small>
+
+        </div>
+
+
+        <div class="panel analysis-overview-card">
+
+          <span>
+            ARTICLES COLLECTED
+          </span>
+
+          <strong>
+            ${escape(
+              totalCollected
+            )}
+          </strong>
+
+          <small>
+            Stored in the intelligence database
+          </small>
+
+        </div>
+
+
+        <div class="panel analysis-overview-card">
+
+          <span>
+            LAST 24 HOURS
+          </span>
+
+          <strong>
+            ${escape(
+              last24
+                .articles_considered
+              ||
+              0
+            )}
+          </strong>
+
+          <small>
+            Analysed in current briefing window
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div class="section-label">
+        LAST 24 HOURS
+      </div>
+
+
+      <section class="panel analysis-section">
+
+        <div class="analysis-section-heading">
+
+          <div>
+
+            <div class="eyebrow">
+              CURRENT THREAT WINDOW
+            </div>
+
+            <h2>
+              24-HOUR SEVERITY OVERVIEW
+            </h2>
+
+          </div>
+
+
+          <span class="analysis-window-time">
+
+            ${
+              last24.last_updated
+
+                ? `Updated ${escape(
+                    formatDateTime(
+                      last24.last_updated
+                    )
+                  )}`
+
+                : "Waiting for briefing data"
+            }
+
+          </span>
+
+        </div>
+
+
+        <div class="analysis-severity-grid">
+
+          ${
+            analysisSeverityCard(
+              "Critical",
+              last24Severity.Critical
+              ||
+              0
+            )
+          }
+
+          ${
+            analysisSeverityCard(
+              "High",
+              last24Severity.High
+              ||
+              0
+            )
+          }
+
+          ${
+            analysisSeverityCard(
+              "Medium",
+              last24Severity.Medium
+              ||
+              0
+            )
+          }
+
+          ${
+            analysisSeverityCard(
+              "Low",
+              last24Severity.Low
+              ||
+              0
+            )
+          }
+
+        </div>
+
+
+        <p class="analysis-help">
+
+          Select a severity level to
+          open matching reports in the
+          CYBERHEAD threat database.
+
+        </p>
+
+      </section>
+
+
+      <div class="section-label">
+        DATABASE SEVERITY DISTRIBUTION
+      </div>
+
+
+      <section class="panel analysis-section">
+
+        <div class="analysis-section-heading">
+
+          <div>
+
+            <div class="eyebrow">
+              ALL PROCESSED REPORTS
+            </div>
+
+            <h2>
+              REPORTS BY SEVERITY
+            </h2>
+
+          </div>
+
+
+          <strong class="analysis-total">
+
+            ${escape(
+              processed
+            )}
+
+            TOTAL
+
+          </strong>
+
+        </div>
+
+
+        <div class="analysis-severity-grid">
+
+          ${
+            analysisSeverityCard(
+              "Critical",
+              severityData.Critical
+              ||
+              0
+            )
+          }
+
+          ${
+            analysisSeverityCard(
+              "High",
+              severityData.High
+              ||
+              0
+            )
+          }
+
+          ${
+            analysisSeverityCard(
+              "Medium",
+              severityData.Medium
+              ||
+              0
+            )
+          }
+
+          ${
+            analysisSeverityCard(
+              "Low",
+              severityData.Low
+              ||
+              0
+            )
+          }
+
+        </div>
+
+      </section>
+
+
+      <div class="section-label">
+        CATEGORY DISTRIBUTION
+      </div>
+
+
+      <section class="panel analysis-section">
+
+        <div class="analysis-section-heading">
+
+          <div>
+
+            <div class="eyebrow">
+              MACHINE LEARNING CLASSIFICATION
+            </div>
+
+            <h2>
+              REPORTS BY CYBERSECURITY CATEGORY
+            </h2>
+
+          </div>
+
+        </div>
+
+
+        <div class="analysis-category-list">
+
+          ${
+            categoryEntries.length
+
+              ? categoryEntries
+                  .map(
+                    ([
+                      name,
+                      count
+                    ]) =>
+                      analysisCategoryRow(
+                        name,
+                        count,
+                        maximumCategory
+                      )
+                  )
+                  .join("")
+
+              : `
+
+                <div class="empty">
+
+                  No category statistics
+                  are currently available.
+
+                </div>
+              `
+          }
+
+        </div>
+
+
+        <p class="analysis-help">
+
+          Categories are assigned by the
+          CYBERHEAD machine-learning
+          classification model.
+
+          Select a category to view
+          matching reports.
+
+        </p>
+
+      </section>
+
+
+      <div class="section-label">
+        ABOUT THE ANALYSIS
+      </div>
+
+
+      <section class="panel analysis-explanation">
+
+        <div>
+
+          <h3>
+            CATEGORY CLASSIFICATION
+          </h3>
+
+          <p>
+
+            CYBERHEAD uses the trained
+            machine-learning classifier
+            to assign each processed
+            article to a cybersecurity
+            category.
+
+          </p>
+
+        </div>
+
+
+        <div>
+
+          <h3>
+            SEVERITY ANALYSIS
+          </h3>
+
+          <p>
+
+            Severity is calculated using
+            the CYBERHEAD hybrid
+            evidence-based severity engine
+            and represented using Low,
+            Medium, High and Critical.
+
+          </p>
+
+        </div>
+
+
+        <div>
+
+          <h3>
+            24-HOUR WINDOW
+          </h3>
+
+          <p>
+
+            Current threat statistics use
+            the same rolling 24-hour window
+            as the CYBERHEAD Daily Briefing.
+
+          </p>
+
+        </div>
+
+      </section>
+    `;
+  }
+
+
+  /* =========================================================
+     SOURCES
+     ========================================================= */
+
+  function sourceStatusLabel(
+    source
+  ) {
+
+    if (!source.enabled) {
+
+      return `
+
+        <span
+          class="
+            source-status
+            Disabled
+          "
+        >
+          ● DISABLED
+        </span>
+      `;
+    }
+
+
+    if (
+      source
+        .last_check_status
+      ===
+      "failed"
+    ) {
+
+      return `
+
+        <span
+          class="
+            source-status
+            Failed
+          "
+        >
+          ● COLLECTION ERROR
+        </span>
+      `;
+    }
+
+
+    return `
+
+      <span
+        class="
+          source-status
+          Active
+        "
+      >
+        ● ACTIVE
+      </span>
+    `;
+  }
+
+
+  function sourceCard(source) {
+
+    const toggleBusy =
+      String(
+        sourceToggleLoadingId
+      )
+      ===
+      String(
+        source.id
+      );
+
+
+    return `
+
+      <article
+        class="
+          panel
+          source-card
+          ${
+            source.enabled
+              ? ""
+              : "source-disabled"
+          }
+        "
+      >
+
+        <div class="source-card-header">
+
+          <div>
+
+            <div class="eyebrow">
+              INTELLIGENCE FEED
+            </div>
+
+            <h2>
+              ${escape(
+                source.name
+              )}
+            </h2>
+
+          </div>
+
+          ${
+            sourceStatusLabel(
+              source
+            )
+          }
+
+        </div>
+
+
+        <div class="source-url">
+
+          ${
+            safeLink(
+              source.url,
+              source.url
+            )
+          }
+
+        </div>
+
+
+        <div class="source-metrics">
+
+          <div>
+
+            <span>
+              ARTICLES COLLECTED
+            </span>
+
+            <strong>
+              ${escape(
+                source.article_count
+                ??
+                0
+              )}
+            </strong>
+
+          </div>
+
+
+          <div>
+
+            <span>
+              LATEST ARTICLE
+            </span>
+
+            <strong>
+
+              ${escape(
+                source.latest_article_at
+
+                  ? formatDate(
+                      source.latest_article_at
+                    )
+
+                  : "None yet"
+              )}
+
+            </strong>
+
+          </div>
+
+
+          <div>
+
+            <span>
+              LAST CHECKED
+            </span>
+
+            <strong>
+
+              ${escape(
+                source.last_checked_at
+
+                  ? formatDateTime(
+                      source.last_checked_at
+                    )
+
+                  : "Not checked yet"
+              )}
+
+            </strong>
+
+          </div>
+
+
+          <div>
+
+            <span>
+              COLLECTOR STATUS
+            </span>
+
+            <strong>
+
+              ${escape(
+                source.last_check_status
+
+                  ? source
+                      .last_check_status
+                      .toUpperCase()
+
+                  : "NOT CHECKED"
+              )}
+
+            </strong>
+
+          </div>
+
+        </div>
+
+
+        ${
+          source.last_check_error
+
+            ? `
+
+              <div class="source-error">
+
+                ${escape(
+                  source.last_check_error
+                )}
+
+              </div>
+            `
+
+            : ""
+        }
+
+
+        <div class="source-actions">
+
+          ${
+            safeLink(
+              source.url,
+              "Open feed"
+            )
+          }
+
+
+          <button
+            data-toggle-source="${escape(
+              source.id
+            )}"
+            data-next-enabled="${
+              source.enabled
+                ? "false"
+                : "true"
+            }"
+            ${
+              toggleBusy
+                ? "disabled"
+                : ""
+            }
+          >
+
+            ${
+              toggleBusy
+
+                ? "Updating..."
+
+                : source.enabled
+
+                  ? "Disable source"
+
+                  : "Enable source"
+            }
+
+          </button>
+
+        </div>
+
+      </article>
+    `;
+  }
+
+
+  function sourcesPage() {
+
+    if (sourcesLoading) {
+
+      return `
+
+        ${
+          pageIntro(
+            "Intelligence <em>Sources</em>",
+            "Manage the RSS and Atom feeds used by CYBERHEAD."
+          )
+        }
+
+        <div class="empty">
+          Loading intelligence sources...
+        </div>
+      `;
+    }
+
+
+    if (sourcesError) {
+
+      return `
+
+        ${
+          pageIntro(
+            "Intelligence <em>Sources</em>",
+            "Manage the RSS and Atom feeds used by CYBERHEAD."
+          )
+        }
+
+        <div class="empty">
+
+          <h2>
+            SOURCES UNAVAILABLE
+          </h2>
+
+          <p>
+            ${escape(
+              sourcesError
+            )}
+          </p>
+
+          <button id="retry-sources">
+            Retry
+          </button>
+
+        </div>
+      `;
+    }
+
+
+    if (!sourcesResponse) {
+
+      return `
+
+        ${
+          pageIntro(
+            "Intelligence <em>Sources</em>",
+            "Manage the RSS and Atom feeds used by CYBERHEAD."
+          )
+        }
+
+        <div class="empty">
+          Loading intelligence sources...
+        </div>
+      `;
+    }
+
+
+    const sourceList =
+      Array.isArray(
+        sourcesResponse.sources
+      )
+        ? sourcesResponse.sources
+        : [];
+
+
+    const totalArticles =
+      sourceList.reduce(
+        (
+          total,
+          source
+        ) =>
+          total
+          +
+          Number(
+            source.article_count
+            ||
+            0
+          ),
+
+        0
+      );
+
+
+    const disabledCount =
+      Math.max(
+        0,
+
+        Number(
+          sourcesResponse.count
+          ||
+          0
+        )
+        -
+        Number(
+          sourcesResponse.active_count
+          ||
+          0
+        )
+      );
+
+
+    return `
+
+      ${
+        pageIntro(
+          "Intelligence <em>Sources</em>",
+          "Manage the RSS and Atom feeds used by the CYBERHEAD collector."
+        )
+      }
+
+
+      <div class="stat-grid source-stat-grid">
+
+        <div class="panel">
+
+          Active sources
+
+          <strong>
+            ${escape(
+              sourcesResponse
+                .active_count
+              ??
+              0
+            )}
+          </strong>
+
+        </div>
+
+
+        <div class="panel">
+
+          Total sources
+
+          <strong>
+            ${escape(
+              sourcesResponse.count
+              ??
+              sourceList.length
+            )}
+          </strong>
+
+        </div>
+
+
+        <div class="panel">
+
+          Articles collected
+
+          <strong>
+            ${escape(
+              totalArticles
+            )}
+          </strong>
+
+        </div>
+
+      </div>
+
+
+      <section
+        class="
+          panel
+          source-management-panel
+        "
+      >
+
+        <div class="source-management-heading">
+
+          <div>
+
+            <div class="eyebrow">
+              SOURCE MANAGEMENT
+            </div>
+
+            <h2>
+              + ADD INTELLIGENCE SOURCE
+            </h2>
+
+            <p>
+
+              Add a public RSS or Atom feed.
+              CYBERHEAD validates the feed
+              before saving it.
+
+            </p>
+
+          </div>
+
+
+          <span class="source-disabled-count">
+
+            ${escape(
+              disabledCount
+            )}
+
+            disabled
+
+          </span>
+
+        </div>
+
+
+        <form
+          id="source-form"
+          class="source-form"
+        >
+
+          <label>
+
+            Source name
+
+            <input
+              id="source-name"
+              type="text"
+              maxlength="100"
+              required
+              placeholder="Example: Security Blog"
+              value="${escape(
+                sourceDraftName
+              )}"
+            >
+
+          </label>
+
+
+          <label>
+
+            RSS / Atom feed URL
+
+            <input
+              id="source-url"
+              type="url"
+              maxlength="2048"
+              required
+              placeholder="https://example.com/feed/"
+              value="${escape(
+                sourceDraftUrl
+              )}"
+            >
+
+          </label>
+
+
+          <div class="source-form-actions">
+
+            <button
+              id="test-source"
+              type="button"
+              ${
+                sourceTestLoading
+                ||
+                sourceAddLoading
+
+                  ? "disabled"
+
+                  : ""
+              }
+            >
+
+              ${
+                sourceTestLoading
+
+                  ? "Testing..."
+
+                  : "Test feed"
+              }
+
+            </button>
+
+
+            <button
+              type="submit"
+              ${
+                sourceAddLoading
+                ||
+                sourceTestLoading
+
+                  ? "disabled"
+
+                  : ""
+              }
+            >
+
+              ${
+                sourceAddLoading
+
+                  ? "Adding..."
+
+                  : "Add source"
+              }
+
+            </button>
+
+          </div>
+
+        </form>
+
+
+        ${
+          sourceMessage
+
+            ? `
+
+              <div
+                class="
+                  source-feedback
+                  ${escape(
+                    sourceMessageType
+                  )}
+                "
+              >
+
+                ${escape(
+                  sourceMessage
+                )}
+
+              </div>
+            `
+
+            : ""
+        }
+
+
+        ${
+          sourceTestResult
+
+            ? `
+
+              <div class="source-test-result">
+
+                <strong>
+                  ✓ VALID FEED
+                </strong>
+
+                <span>
+
+                  Title:
+
+                  ${escape(
+                    sourceTestResult
+                      .feed_title
+                    ||
+                    "Not supplied"
+                  )}
+
+                </span>
+
+                <span>
+
+                  Format:
+
+                  ${escape(
+                    sourceTestResult
+                      .feed_type
+                    ||
+                    "RSS / Atom"
+                  )}
+
+                </span>
+
+                <span>
+
+                  Entries detected:
+
+                  ${escape(
+                    sourceTestResult
+                      .entry_count
+                    ??
+                    0
+                  )}
+
+                </span>
+
+              </div>
+            `
+
+            : ""
+        }
+
+      </section>
+
+
+      <div class="section-label">
+        CONFIGURED INTELLIGENCE SOURCES
+      </div>
+
+
+      ${
+        sourceList.length
+
+          ? `
+
+            <div class="source-card-grid">
+
+              ${
+                sourceList
+                  .map(
+                    sourceCard
+                  )
+                  .join("")
+              }
+
+            </div>
+          `
+
+          : `
+
+            <div class="empty">
+
+              No intelligence sources
+              have been configured.
+
+            </div>
+          `
+      }
+
+
+      <div class="notice source-note">
+
+        Enabled sources are used by the
+        normal CYBERHEAD collection pipeline.
+
+        A newly added source will be included
+        automatically on the next scheduled
+        collection run.
+
+      </div>
+    `;
+  }
+
+
+  async function loadSources() {
+
+    if (sourcesLoading) {
+      return;
+    }
+
+
+    sourcesLoading =
+      true;
+
+    sourcesError =
+      null;
+
+
+    if (
+      page() === "sources"
+    ) {
+      render();
+    }
+
+
+    try {
+
+      sourcesResponse =
+        await CyberheadAPI
+          .getSources();
+
+
+    } catch (error) {
+
+      sourcesError =
+        error.name === "AbortError"
+
+          ? "The source request timed out."
+
+          : error.message;
+
+
+    } finally {
+
+      sourcesLoading =
+        false;
+
+
+      if (
+        page() === "sources"
+      ) {
+        render();
+      }
+    }
+  }
+
+
+  async function testSourceFeed() {
+
+    sourceDraftName =
+      $("#source-name")
+        ?.value
+      ??
+      sourceDraftName;
+
+
+    sourceDraftUrl =
+      $("#source-url")
+        ?.value
+      ??
+      sourceDraftUrl;
+
+
+    const url =
+      sourceDraftUrl.trim();
+
+
+    sourceMessage =
+      "";
+
+    sourceTestResult =
+      null;
+
+
+    if (!url) {
+
+      sourceMessageType =
+        "error";
+
+
+      sourceMessage =
+        "Enter an RSS or Atom feed URL first.";
+
+
+      render();
+
+      return;
+    }
+
+
+    sourceTestLoading =
+      true;
+
+
+    render();
+
+
+    try {
+
+      sourceTestResult =
+        await CyberheadAPI
+          .testSource(
+            url
+          );
+
+
+      sourceMessageType =
+        "success";
+
+
+      sourceMessage =
+        "Feed validation succeeded.";
+
+
+    } catch (error) {
+
+      sourceMessageType =
+        "error";
+
+
+      sourceMessage =
+        error.name === "AbortError"
+
+          ? "Feed validation timed out."
+
+          : error.message;
+
+
+    } finally {
+
+      sourceTestLoading =
+        false;
+
+
+      if (
+        page() === "sources"
+      ) {
+        render();
+      }
+    }
+  }
+
+
+  async function addSourceFromForm() {
+
+    sourceDraftName =
+      $("#source-name")
+        ?.value
+      ??
+      sourceDraftName;
+
+
+    sourceDraftUrl =
+      $("#source-url")
+        ?.value
+      ??
+      sourceDraftUrl;
+
+
+    const name =
+      sourceDraftName.trim();
+
+
+    const url =
+      sourceDraftUrl.trim();
+
+
+    sourceMessage =
+      "";
+
+
+    if (
+      !name
+      ||
+      !url
+    ) {
+
+      sourceMessageType =
+        "error";
+
+
+      sourceMessage =
+        "Enter both a source name and feed URL.";
+
+
+      render();
+
+      return;
+    }
+
+
+    sourceAddLoading =
+      true;
+
+
+    render();
+
+
+    try {
+
+      const result =
+        await CyberheadAPI
+          .addSource(
+            name,
+            url
+          );
+
+
+      sourceMessageType =
+        "success";
+
+
+      sourceMessage =
+        `${
+          result
+            ?.source
+            ?.name
+          ||
+          name
+        } was added successfully.`;
+
+
+      sourceDraftName =
+        "";
+
+
+      sourceDraftUrl =
+        "";
+
+
+      sourceTestResult =
+        null;
+
+
+      sourcesResponse =
+        await CyberheadAPI
+          .getSources();
+
+
+    } catch (error) {
+
+      sourceMessageType =
+        "error";
+
+
+      sourceMessage =
+        error.name === "AbortError"
+
+          ? "Adding the source timed out."
+
+          : error.message;
+
+
+    } finally {
+
+      sourceAddLoading =
+        false;
+
+
+      if (
+        page() === "sources"
+      ) {
+        render();
+      }
+    }
+  }
+
+
+  async function toggleSource(
+    sourceId,
+    enabled
+  ) {
+
+    sourceToggleLoadingId =
+      String(
+        sourceId
+      );
+
+
+    sourceMessage =
+      "";
+
+
+    render();
+
+
+    try {
+
+      const result =
+        await CyberheadAPI
+          .setSourceEnabled(
+            sourceId,
+            enabled
+          );
+
+
+      sourceMessageType =
+        "success";
+
+
+      sourceMessage =
+        `${
+          result
+            ?.source
+            ?.name
+          ||
+          "Source"
+        } ${
+          enabled
+            ? "enabled"
+            : "disabled"
+        }.`;
+
+
+      sourcesResponse =
+        await CyberheadAPI
+          .getSources();
+
+
+    } catch (error) {
+
+      sourceMessageType =
+        "error";
+
+
+      sourceMessage =
+        error.name === "AbortError"
+
+          ? "Updating the source timed out."
+
+          : error.message;
+
+
+    } finally {
+
+      sourceToggleLoadingId =
+        null;
+
+
+      if (
+        page() === "sources"
+      ) {
+        render();
+      }
+    }
+  }
+
+
+  /* =========================================================
+     ABOUT
+     ========================================================= */
+
+  function about() {
+
+    return `
+
+      ${
+        pageIntro(
+          "About <em>Cyberhead</em>",
+          "Threats move fast. Stay one step ahead."
+        )
+      }
+
+
+      <div class="prose panel">
+
+        <h2>
+          CYBERHEAD NEWS
+        </h2>
+
+        <p>
+
+          CYBERHEAD automatically collects
+          cybersecurity news, classifies
+          articles using machine learning,
+          extracts threat intelligence,
+          calculates explainable severity,
+          generates summaries and creates
+          a rolling Daily Briefing.
+
+        </p>
+
+
+        <h2>
+          LIVE COMPONENTS
+        </h2>
+
+        <p>
+
+          Daily Briefing, Threats & Alerts,
+          All Reports, Saved Stories,
+          search, filters, article details,
+          threat statistics and source
+          management are connected to the
+          CYBERHEAD backend.
+
+        </p>
+
+
+        <h2>
+          CYBERHEAD SEVERITY SCORE
+        </h2>
+
+        <p>
+
+          The CYBERHEAD Severity Score
+          is an internal 0-100 threat score.
+
+          It is not the same as CVSS.
+
+        </p>
+
+      </div>
+    `;
+  }
+
+
+  /* =========================================================
+     RENDER
+     ========================================================= */
+
+  function render() {
+
+    const current =
+      page();
+
+
+    $("#nav").innerHTML =
+      routes
+        .map(
+          ([
+            id,
+            icon,
+            label
+          ]) => `
+
+            <a
+              href="#${id}"
+              class="${
+                id === current
+                  ? "active"
+                  : ""
+              }"
+              ${
+                id === current
+                  ? 'aria-current="page"'
+                  : ""
+              }
+            >
+
+              <span
+                class="nav-icon"
+                aria-hidden="true"
+              >
+                ${icon}
+              </span>
+
+              ${label}
+
+            </a>
+          `
+        )
+        .join("");
+
+
+    const route =
+      routes.find(
+        (item) =>
+          item[0] === current
+      );
+
+
+    document.title =
+      `${
+        route
+          ? route[2]
+          : "CYBERHEAD"
+      } — CYBERHEAD`;
+
+
+    if (
+      current === "briefing"
+    ) {
+
+      $("#content").innerHTML =
+        briefing();
+
+
+    } else if (
+      current === "alerts"
+    ) {
+
+      $("#content").innerHTML =
+        alertsPage();
+
+
+    } else if (
+      current === "reports"
+    ) {
+
+      $("#content").innerHTML =
+        reportsPage();
+
+
+    } else if (
+      current === "saved"
+    ) {
+
+      $("#content").innerHTML =
+        savedPage();
+
+
+    } else if (
+      current === "analysis"
+    ) {
+
+      $("#content").innerHTML =
+        analysis();
+
+
+    } else if (
+      current === "sources"
+    ) {
+
+      $("#content").innerHTML =
+        sourcesPage();
+
+
+    } else if (
+      current === "about"
+    ) {
+
+      $("#content").innerHTML =
+        about();
+    }
+  }
+
+
+  /* =========================================================
+     LOAD GENERAL LIVE DATA
+     ========================================================= */
+
+  async function loadLiveData(
+    silent = false
+  ) {
+
+    if (liveLoading) {
+      return;
+    }
+
+
+    liveLoading =
+      true;
+
+
+    if (!silent) {
+
+      $("#status").textContent =
+        "Connecting to CYBERHEAD...";
+    }
+
+
+    try {
+
+      const [
+        briefingResponse,
+        statsResponse
+      ] =
+        await Promise.all([
+
+          CyberheadAPI
+            .getDailyBriefing(),
+
+          CyberheadAPI
+            .getStats()
+
+        ]);
+
+
+      liveBriefing =
+        briefingResponse;
+
+
+      liveStats =
+        statsResponse;
+
+
+      liveLoadError =
+        null;
+
+
+      $("#status").textContent =
+        "";
+
+
+    } catch (error) {
+
+      liveLoadError =
+        error.name === "AbortError"
+
+          ? "The request timed out."
+
+          : error.message;
+
+
+      $("#status").textContent =
+        `Unable to load live CYBERHEAD data: ${liveLoadError}`;
+
+
+    } finally {
+
+      liveLoading =
+        false;
+
+
+      if (
+        page() !== "sources"
+      ) {
+        render();
+      }
+    }
+  }
+
+
+  /* =========================================================
+     OPEN REPORTS FROM SEVERITY / CATEGORY
+     ========================================================= */
+
+  function openReportsFromSeverity(
+    level
+  ) {
+
+    query =
+      "";
+
+
+    severity =
+      level;
+
+
+    category =
+      "All";
+
+
+    sort =
+      "latest";
+
+
+    articleOffset =
+      0;
+
+
+    articleResponse =
+      null;
+
+
+    $("#search").value =
+      "";
+
+
+    if (
+      page() === "reports"
+    ) {
+
+      loadArticles();
+
+    } else {
+
+      location.hash =
+        "reports";
+    }
+  }
+
+
+  function openReportsFromCategory(
+    name
+  ) {
+
+    query =
+      "";
+
+
+    severity =
+      "All";
+
+
+    category =
+      name;
+
+
+    sort =
+      "latest";
+
+
+    articleOffset =
+      0;
+
+
+    articleResponse =
+      null;
+
+
+    $("#search").value =
+      "";
+
+
+    if (
+      page() === "reports"
+    ) {
+
+      loadArticles();
+
+    } else {
+
+      location.hash =
+        "reports";
+    }
+  }
+
+
+  /* =========================================================
+     CLICK EVENTS
+     ========================================================= */
+
+  document.addEventListener(
+    "click",
+    (event) => {
+
+
+      /* -----------------------------------------------------
+         OPEN ARTICLE
+         ----------------------------------------------------- */
+
+      const liveOpen =
+        event.target.closest(
+          "[data-live-open]"
+        );
+
+
+      if (liveOpen) {
+
+        openLiveArticle(
+          liveOpen
+            .dataset
+            .liveOpen
+        );
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         BRIEFING SEVERITY
+         ----------------------------------------------------- */
+
+      const briefingSeverity =
+        event.target.closest(
+          "[data-briefing-severity]"
+        );
+
+
+      if (briefingSeverity) {
+
+        openReportsFromSeverity(
+          briefingSeverity
+            .dataset
+            .briefingSeverity
+        );
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         BRIEFING CATEGORY
+         ----------------------------------------------------- */
+
+      const briefingCategory =
+        event.target.closest(
+          "[data-briefing-category]"
+        );
+
+
+      if (briefingCategory) {
+
+        openReportsFromCategory(
+          briefingCategory
+            .dataset
+            .briefingCategory
+        );
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         ANALYSIS SEVERITY
+         ----------------------------------------------------- */
+
+      const analysisSeverity =
+        event.target.closest(
+          "[data-analysis-severity]"
+        );
+
+
+      if (analysisSeverity) {
+
+        openReportsFromSeverity(
+          analysisSeverity
+            .dataset
+            .analysisSeverity
+        );
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         ANALYSIS CATEGORY
+         ----------------------------------------------------- */
+
+      const analysisCategory =
+        event.target.closest(
+          "[data-analysis-category]"
+        );
+
+
+      if (analysisCategory) {
+
+        openReportsFromCategory(
+          analysisCategory
+            .dataset
+            .analysisCategory
+        );
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         SAVED FILTER
+         ----------------------------------------------------- */
+
+      const savedFilter =
+        event.target.closest(
+          "[data-saved-filter]"
+        );
+
+
+      if (savedFilter) {
+
+        savedSeverityFilter =
+          savedFilter
+            .dataset
+            .savedFilter;
+
+
+        render();
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         REMOVE SAVED ARTICLE
+         ----------------------------------------------------- */
+
+      const removeSaved =
+        event.target.closest(
+          "[data-remove-saved]"
+        );
+
+
+      if (removeSaved) {
+
+        const id =
+          String(
+            removeSaved
+              .dataset
+              .removeSaved
+          );
+
+
+        saved =
+          saved.filter(
+            (value) =>
+              value !== id
+          );
+
+
+        savedArticles =
+          savedArticles.filter(
+            (article) =>
+              String(
+                article.id
+              )
+              !== id
+          );
+
+
+        persistSaved();
+
+
+        render();
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         ENABLE / DISABLE SOURCE
+         ----------------------------------------------------- */
+
+      const toggleButton =
+        event.target.closest(
+          "[data-toggle-source]"
+        );
+
+
+      if (toggleButton) {
+
+        toggleSource(
+
+          toggleButton
+            .dataset
+            .toggleSource,
+
+          toggleButton
+            .dataset
+            .nextEnabled
+          ===
+          "true"
+        );
+
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         TEST SOURCE
+         ----------------------------------------------------- */
+
+      if (
+        event.target.id
+        ===
+        "test-source"
+      ) {
+
+        testSourceFeed();
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         RESET REPORT FILTERS
+         ----------------------------------------------------- */
+
+      if (
+        event.target.id
+        ===
+        "reset-reports"
+      ) {
+
+        query =
+          "";
+
+
+        severity =
+          "All";
+
+
+        category =
+          "All";
+
+
+        sort =
+          "latest";
+
+
+        articleOffset =
+          0;
+
+
+        $("#search").value =
+          "";
+
+
+        loadArticles();
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         PREVIOUS REPORT PAGE
+         ----------------------------------------------------- */
+
+      if (
+        event.target.id
+        ===
+        "previous-page"
+      ) {
+
+        articleOffset =
+          Math.max(
+            0,
+            articleOffset
+            -
+            ARTICLE_LIMIT
+          );
+
+
+        loadArticles();
+
+
+        window.scrollTo({
+          top:
+            0,
+
+          behavior:
+            "smooth"
+        });
+
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         NEXT REPORT PAGE
+         ----------------------------------------------------- */
+
+      if (
+        event.target.id
+        ===
+        "next-page"
+      ) {
+
+        articleOffset +=
+          ARTICLE_LIMIT;
+
+
+        loadArticles();
+
+
+        window.scrollTo({
+          top:
+            0,
+
+          behavior:
+            "smooth"
+        });
+
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         RETRY BUTTONS
+         ----------------------------------------------------- */
+
+      if (
+        event.target.id
+        ===
+        "retry-reports"
+      ) {
+
+        loadArticles();
+
+        return;
+      }
+
+
+      if (
+        event.target.id
+        ===
+        "retry-alerts"
+      ) {
+
+        loadAlerts();
+
+        return;
+      }
+
+
+      if (
+        event.target.id
+        ===
+        "retry-saved"
+      ) {
+
+        loadSavedArticles();
+
+        return;
+      }
+
+
+      if (
+        event.target.id
+        ===
+        "retry-live"
+      ) {
+
+        loadLiveData();
+
+        return;
+      }
+
+
+      if (
+        event.target.id
+        ===
+        "retry-sources"
+      ) {
+
+        loadSources();
+
+        return;
+      }
+
+
+      /* -----------------------------------------------------
+         SAVE / UNSAVE ARTICLE
+         ----------------------------------------------------- */
+
+      const saveButton =
+        event.target.closest(
+          "[data-save-live]"
+        );
+
+
+      if (saveButton) {
+
+        const id =
+          String(
+            saveButton
+              .dataset
+              .saveLive
+          );
+
+
+        if (
+          saved.includes(id)
+        ) {
+
+          saved =
+            saved.filter(
+              (value) =>
+                value !== id
+            );
+
+
+          savedArticles =
+            savedArticles.filter(
+              (article) =>
+                String(
+                  article.id
+                )
+                !== id
+            );
+
+
+        } else {
+
+          saved.push(id);
+        }
+
+
+        persistSaved();
+
+
+        saveButton.textContent =
+          saved.includes(id)
+
+            ? "Remove from saved"
+
+            : "Save story ♧";
+
+
+        if (
+          page() === "saved"
+        ) {
+
+          loadSavedArticles();
+        }
+      }
+    }
+  );
+
+
+  /* =========================================================
+     SOURCE FORM SUBMISSION
+     ========================================================= */
+
+  document.addEventListener(
+    "submit",
+    (event) => {
+
+      if (
+        event.target.id
+        !==
+        "source-form"
+      ) {
+
+        return;
+      }
+
+
+      event.preventDefault();
+
+
+      addSourceFromForm();
+    }
+  );
+
+
+  /* =========================================================
+     SOURCE INPUT
+     ========================================================= */
+
+  document.addEventListener(
+    "input",
+    (event) => {
+
+      if (
+        event.target.id
+        ===
+        "source-name"
+      ) {
+
+        sourceDraftName =
+          event.target.value;
+      }
+
+
+      if (
+        event.target.id
+        ===
+        "source-url"
+      ) {
+
+        sourceDraftUrl =
+          event.target.value;
+
+
+        sourceTestResult =
+          null;
+      }
+    }
+  );
+
+
+  /* =========================================================
+     REPORT FILTER CHANGES
+     ========================================================= */
+
+  document.addEventListener(
+    "change",
+    (event) => {
+
+      if (
+        event.target.id
+        ===
+        "severity"
+      ) {
+
+        severity =
+          event.target.value;
+
+
+      } else if (
+        event.target.id
+        ===
+        "category"
+      ) {
+
+        category =
+          event.target.value;
+
+
+      } else if (
+        event.target.id
+        ===
+        "sort"
+      ) {
+
+        sort =
+          event.target.value;
+
+
+      } else {
+
+        return;
+      }
+
+
+      articleOffset =
+        0;
+
+
+      loadArticles();
+    }
+  );
+
+
+  /* =========================================================
+     SEARCH
+     ========================================================= */
+
+  $("#search")
+    .addEventListener(
+      "input",
+      (event) => {
+
+        query =
+          event.target.value;
+
+
+        articleOffset =
+          0;
+
+
+        if (
+          page()
+          !==
+          "reports"
+        ) {
+
+          location.hash =
+            "reports";
+        }
+
+
+        clearTimeout(
+          searchTimer
+        );
+
+
+        searchTimer =
+          setTimeout(
+            () =>
+              loadArticles(),
+            350
+          );
+      }
+    );
+
+
+  /* =========================================================
+     DIALOG
+     ========================================================= */
+
+  $(".close").onclick =
+    () =>
+      $("#report-dialog")
+        .close();
+
+
+  $("#report-dialog")
+    .addEventListener(
+      "click",
+      (event) => {
+
+        if (
+          event.target
+          !==
+          $("#report-dialog")
+        ) {
+
+          return;
+        }
+
+
+        const box =
+          event.target
+            .getBoundingClientRect();
+
+
+        if (
+          event.clientX
+          <
+          box.left
+
+          ||
+
+          event.clientX
+          >
+          box.right
+
+          ||
+
+          event.clientY
+          <
+          box.top
+
+          ||
+
+          event.clientY
+          >
+          box.bottom
+        ) {
+
+          event.target.close();
+        }
+      }
+    );
+
+
+  /* =========================================================
+     PAGE NAVIGATION
+     ========================================================= */
+
+  window.addEventListener(
+    "hashchange",
+    () => {
+
+      const current =
+        page();
+
+
+      render();
+
+
+      /*
+       * If the user started directly on Sources,
+       * briefing/stats were intentionally not loaded.
+       * Load them when moving to another page.
+       */
+
+      if (
+        current !== "sources"
+        &&
+        (
+          !liveBriefing
+          ||
+          !liveStats
+        )
+      ) {
+
+        loadLiveData();
+      }
+
+
+      if (
+        current === "reports"
+        &&
+        articleResponse === null
+        &&
+        !articlesLoading
+      ) {
+
+        loadArticles();
+      }
+
+
+      if (
+        current === "alerts"
+        &&
+        criticalAlertsResponse === null
+        &&
+        !alertsLoading
+      ) {
+
+        loadAlerts();
+      }
+
+
+      if (
+        current === "saved"
+        &&
+        !savedLoading
+      ) {
+
+        loadSavedArticles();
+      }
+
+
+      if (
+        current === "sources"
+        &&
+        sourcesResponse === null
+        &&
+        !sourcesLoading
+      ) {
+
+        loadSources();
+      }
+    }
+  );
+
+
+  /* =========================================================
+     CLOCK
+     ========================================================= */
+
+  setInterval(
+    () => {
+
+      const clock =
+        $("#clock");
+
+
+      if (clock) {
+
+        clock.textContent =
+          new Date()
+            .toLocaleTimeString(
+              "en-GB",
+              {
+                hour:
+                  "2-digit",
+
+                minute:
+                  "2-digit"
+              }
+            );
+      }
+    },
+
+    30000
+  );
+
+
+  /* =========================================================
+     AUTO REFRESH
+     ========================================================= */
+
+  setInterval(
+    () => {
+
+      const currentPage =
+        page();
+
+
+      /*
+       * Do NOT automatically refresh Sources.
+       * Keeping Sources stable prevents the
+       * Add Source form from being rebuilt.
+       */
+
+      if (
+        currentPage === "sources"
+      ) {
+
+        return;
+      }
+
+
+      loadLiveData(
+        true
+      );
+
+
+      if (
+        currentPage === "reports"
+      ) {
+
+        loadArticles();
+      }
+
+
+      if (
+        currentPage === "alerts"
+      ) {
+
+        loadAlerts();
+      }
+
+    },
+
+    window.CYBERHEAD_CONFIG
+      .refreshMs
+
+    ||
+
+    60000
+  );
+
+
+  /* =========================================================
+     START
+     ========================================================= */
+
+  $("#year").textContent =
+    new Date()
+      .getFullYear();
+
+
+  render();
+
+
+  /*
+   * Sources only needs source information.
+   * This keeps the source page stable.
+   */
+
+  if (
+    page() === "sources"
+  ) {
+
+    loadSources();
+
+  } else {
+
+    loadLiveData();
+  }
+
+
+  if (
+    page() === "reports"
+  ) {
+
+    loadArticles();
+  }
+
+
+  if (
+    page() === "alerts"
+  ) {
+
+    loadAlerts();
+  }
+
+
+  if (
+    page() === "saved"
+  ) {
+
+    loadSavedArticles();
+  }
+
 })();

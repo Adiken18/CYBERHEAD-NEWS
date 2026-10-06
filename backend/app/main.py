@@ -34,6 +34,14 @@ from app.briefing_database import (
     get_current_briefing,
 )
 
+from app.source_api import (
+    router as source_router,
+)
+
+from app.source_manager import (
+    initialise_source_database,
+)
+
 
 # =========================================================
 # APPLICATION STARTUP
@@ -42,11 +50,19 @@ from app.briefing_database import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    # Make sure the main CYBERHEAD database exists.
+    # Main CYBERHEAD database
     initialise_database()
 
-    # Make sure the Daily Briefing tables exist.
+    # Daily Briefing tables
     initialise_briefing_database()
+
+    # Source management table
+    #
+    # IMPORTANT:
+    # This runs once when FastAPI starts.
+    # GET /api/sources does not need to initialise
+    # or write to the database every time.
+    initialise_source_database()
 
     yield
 
@@ -56,6 +72,7 @@ async def lifespan(app: FastAPI):
 # =========================================================
 
 app = FastAPI(
+
     title="CYBERHEAD News API",
 
     description=(
@@ -70,14 +87,29 @@ app = FastAPI(
 
 
 # =========================================================
+# SOURCE MANAGEMENT ROUTER
+# =========================================================
+
+app.include_router(
+    source_router
+)
+
+
+# =========================================================
 # CORS
 # =========================================================
 #
-# This allows the frontend to request data from FastAPI
-# while you are developing locally.
+# Required because the frontend is served by VS Code
+# Live Server on a different local port.
 #
-# We can restrict this later when the final deployment
-# address is known.
+# GET:
+#   Reading articles, briefing, stats, sources.
+#
+# POST:
+#   Testing and adding sources.
+#
+# PATCH:
+#   Enabling or disabling sources.
 # =========================================================
 
 app.add_middleware(
@@ -91,7 +123,9 @@ app.add_middleware(
     allow_credentials=False,
 
     allow_methods=[
-        "GET"
+        "GET",
+        "POST",
+        "PATCH",
     ],
 
     allow_headers=[
@@ -108,6 +142,7 @@ app.add_middleware(
 def home():
 
     return {
+
         "message":
             "CYBERHEAD News backend is running",
 
@@ -127,6 +162,7 @@ def home():
 def api_status():
 
     return {
+
         "name":
             "CYBERHEAD News API",
 
@@ -146,7 +182,9 @@ def api_status():
 def api_articles(
 
     category: Optional[str] = Query(
+
         default=None,
+
         description=(
             "Filter articles by cybersecurity category."
         ),
@@ -160,15 +198,20 @@ def api_articles(
             "Critical",
         ]
     ] = Query(
+
         default=None,
+
         description=(
             "Filter articles by severity."
         ),
     ),
 
     search: Optional[str] = Query(
+
         default=None,
+
         min_length=1,
+
         description=(
             "Search article title, summary "
             "and extracted article text."
@@ -179,7 +222,9 @@ def api_articles(
         "latest",
         "severity",
     ] = Query(
+
         default="latest",
+
         description=(
             "Sort by latest publication "
             "or highest severity."
@@ -187,17 +232,24 @@ def api_articles(
     ),
 
     limit: int = Query(
+
         default=20,
+
         ge=1,
+
         le=100,
+
         description=(
             "Maximum number of articles returned."
         ),
     ),
 
     offset: int = Query(
+
         default=0,
+
         ge=0,
+
         description=(
             "Number of matching articles to skip."
         ),
@@ -210,15 +262,15 @@ def api_articles(
 
     if (
         category is not None
-
-        and category
-        not in PRIMARY_CATEGORIES
+        and category not in PRIMARY_CATEGORIES
     ):
 
         raise HTTPException(
+
             status_code=400,
 
             detail={
+
                 "message":
                     "Invalid category.",
 
@@ -230,7 +282,7 @@ def api_articles(
         )
 
     # -----------------------------------------------------
-    # Build SQL filters safely
+    # Build SQL filters
     # -----------------------------------------------------
 
     conditions = [
@@ -246,6 +298,7 @@ def api_articles(
 
     parameters = []
 
+
     if category is not None:
 
         conditions.append(
@@ -256,6 +309,7 @@ def api_articles(
             category
         )
 
+
     if severity is not None:
 
         conditions.append(
@@ -265,6 +319,7 @@ def api_articles(
         parameters.append(
             severity
         )
+
 
     if search is not None:
 
@@ -299,6 +354,7 @@ def api_articles(
             search_value,
             search_value,
         ])
+
 
     where_clause = (
         " AND ".join(
@@ -355,11 +411,13 @@ def api_articles(
             ).fetchone()
         )
 
+
         total = (
             total_row[
                 "total"
             ]
         )
+
 
         rows = (
             connection.execute(
@@ -412,10 +470,14 @@ def api_articles(
             ).fetchall()
         )
 
+
     articles = [
+
         dict(row)
+
         for row in rows
     ]
+
 
     return {
 
@@ -460,12 +522,9 @@ def api_articles(
 def get_cve_api_details(
     row
 ):
-    """
-    Convert stored NVD/CISA data into a smaller,
-    frontend-friendly structure.
-    """
 
     record = {}
+
 
     if row[
         "record_json"
@@ -489,6 +548,7 @@ def get_cve_api_details(
 
     description = None
 
+
     for item in record.get(
         "descriptions",
         []
@@ -498,7 +558,8 @@ def get_cve_api_details(
             item.get(
                 "lang"
             )
-            == "en"
+            ==
+            "en"
         ):
 
             description = (
@@ -515,6 +576,7 @@ def get_cve_api_details(
 
     maximum_cvss = None
 
+
     for (
         metric_name,
         assessments
@@ -529,6 +591,7 @@ def get_cve_api_details(
 
             continue
 
+
         for assessment in assessments:
 
             cvss_data = (
@@ -538,15 +601,18 @@ def get_cve_api_details(
                 )
             )
 
+
             score = (
                 cvss_data.get(
                     "baseScore"
                 )
             )
 
+
             if score is None:
 
                 continue
+
 
             try:
 
@@ -556,16 +622,15 @@ def get_cve_api_details(
 
             except (
                 TypeError,
-                ValueError
+                ValueError,
             ):
 
                 continue
 
+
             if (
                 maximum_cvss is None
-
-                or score
-                > maximum_cvss
+                or score > maximum_cvss
             ):
 
                 maximum_cvss = (
@@ -573,7 +638,7 @@ def get_cve_api_details(
                 )
 
     # -----------------------------------------------------
-    # Return readable API structure
+    # Frontend-friendly result
     # -----------------------------------------------------
 
     return {
@@ -602,7 +667,8 @@ def get_cve_api_details(
         "nvd_url":
             (
                 "https://nvd.nist.gov/vuln/detail/"
-                + row[
+                +
+                row[
                     "cve_id"
                 ]
             ),
@@ -666,11 +732,11 @@ def api_article_detail(
     article_id: int
 ):
 
-    # -----------------------------------------------------
-    # Article
-    # -----------------------------------------------------
-
     with get_connection() as connection:
+
+        # -------------------------------------------------
+        # Article
+        # -------------------------------------------------
 
         article_row = (
             connection.execute(
@@ -715,9 +781,11 @@ def api_article_detail(
             ).fetchone()
         )
 
+
         if article_row is None:
 
             raise HTTPException(
+
                 status_code=404,
 
                 detail=(
@@ -755,7 +823,7 @@ def api_article_detail(
         )
 
         # -------------------------------------------------
-        # CVE + NVD + CISA information
+        # CVE + NVD + CISA
         # -------------------------------------------------
 
         cve_rows = (
@@ -810,6 +878,7 @@ def api_article_detail(
             ).fetchall()
         )
 
+
     article = dict(
         article_row
     )
@@ -820,9 +889,11 @@ def api_article_detail(
 
     tags = []
 
+
     for row in tag_rows:
 
         evidence = {}
+
 
         if row[
             "evidence_json"
@@ -839,6 +910,7 @@ def api_article_detail(
             except json.JSONDecodeError:
 
                 evidence = {}
+
 
         tags.append({
 
@@ -861,19 +933,24 @@ def api_article_detail(
     # -----------------------------------------------------
 
     cves = [
+
         get_cve_api_details(
             row
         )
+
         for row in cve_rows
     ]
+
 
     article[
         "threat_tags"
     ] = tags
 
+
     article[
         "cves"
     ] = cves
+
 
     return article
 
@@ -891,6 +968,7 @@ def api_daily_briefing():
         get_current_briefing()
     )
 
+
     if briefing is None:
 
         raise HTTPException(
@@ -903,14 +981,12 @@ def api_daily_briefing():
             ),
         )
 
-    # category_counts_json is the raw DB field.
-    # The parsed category_counts field is better
-    # for the frontend.
 
     briefing.pop(
         "category_counts_json",
         None,
     )
+
 
     return {
 
@@ -952,8 +1028,8 @@ def api_stats():
         total_articles = (
             connection.execute(
                 """
-                SELECT COUNT(*)
-                AS total
+                SELECT
+                    COUNT(*) AS total
 
                 FROM articles
                 """
@@ -963,14 +1039,14 @@ def api_stats():
         )
 
         # -------------------------------------------------
-        # Articles ready for website display
+        # Processed articles
         # -------------------------------------------------
 
         processed_articles = (
             connection.execute(
                 """
-                SELECT COUNT(*)
-                AS total
+                SELECT
+                    COUNT(*) AS total
 
                 FROM articles
 
@@ -1045,31 +1121,43 @@ def api_stats():
             ).fetchall()
         )
 
+
     severity_distribution = {
-        "Critical": 0,
-        "High": 0,
-        "Medium": 0,
-        "Low": 0,
+
+        "Critical":
+            0,
+
+        "High":
+            0,
+
+        "Medium":
+            0,
+
+        "Low":
+            0,
     }
+
 
     for row in severity_rows:
 
-        severity = (
+        severity_name = (
             row[
                 "severity"
             ]
         )
 
+
         if (
-            severity
+            severity_name
             in severity_distribution
         ):
 
             severity_distribution[
-                severity
+                severity_name
             ] = row[
                 "total"
             ]
+
 
     category_distribution = {
 
@@ -1084,12 +1172,13 @@ def api_stats():
     }
 
     # -----------------------------------------------------
-    # Current rolling Daily Briefing statistics
+    # Rolling 24-hour briefing statistics
     # -----------------------------------------------------
 
     briefing = (
         get_current_briefing()
     )
+
 
     if briefing is None:
 
@@ -1107,14 +1196,22 @@ def api_stats():
             "articles_in_briefing":
                 0,
 
-            "severity":
-                {
-                    "Critical": 0,
-                    "High": 0,
-                    "Medium": 0,
-                    "Low": 0,
-                },
+            "severity": {
+
+                "Critical":
+                    0,
+
+                "High":
+                    0,
+
+                "Medium":
+                    0,
+
+                "Low":
+                    0,
+            },
         }
+
 
     else:
 
@@ -1175,6 +1272,7 @@ def api_stats():
             },
         }
 
+
     return {
 
         "total_articles":
@@ -1195,7 +1293,7 @@ def api_stats():
 
 
 # =========================================================
-# CATEGORY LIST FOR FRONTEND FILTERS
+# CATEGORY LIST
 # =========================================================
 
 @app.get(
@@ -1204,6 +1302,7 @@ def api_stats():
 def api_categories():
 
     return {
+
         "categories":
             list(
                 PRIMARY_CATEGORIES
@@ -1212,7 +1311,7 @@ def api_categories():
 
 
 # =========================================================
-# SEVERITY LIST FOR FRONTEND FILTERS
+# SEVERITY LIST
 # =========================================================
 
 @app.get(
@@ -1221,10 +1320,15 @@ def api_categories():
 def api_severities():
 
     return {
+
         "severities": [
+
             "Critical",
+
             "High",
+
             "Medium",
+
             "Low",
         ]
     }
@@ -1234,8 +1338,8 @@ def api_severities():
 # OLD DEVELOPMENT / TEST ROUTES
 # =========================================================
 #
-# Keeping these so your previous API tests do not break.
-# The frontend should use /api/... routes instead.
+# These are kept so earlier testing commands still work.
+# The frontend should use the /api/... routes.
 # =========================================================
 
 @app.get(
@@ -1246,6 +1350,7 @@ def list_articles():
     articles = (
         get_articles()
     )
+
 
     return {
 
@@ -1265,6 +1370,7 @@ def list_articles():
 def list_categories():
 
     return {
+
         "categories":
             list(
                 PRIMARY_CATEGORIES
@@ -1280,6 +1386,7 @@ def list_article_cves():
     links = (
         get_article_cves()
     )
+
 
     return {
 
@@ -1301,6 +1408,7 @@ def list_cve_details():
     details = (
         get_cve_details()
     )
+
 
     return {
 

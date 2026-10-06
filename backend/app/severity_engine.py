@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import re
 
 from datetime import datetime, timezone
@@ -18,7 +19,11 @@ from app.content_filter import (
 )
 
 
-RULES_VERSION = "severity_rules_v2_100"
+# =========================================================
+# RULE VERSION
+# =========================================================
+
+RULES_VERSION = "severity_rules_v3_calibrated"
 
 
 # =========================================================
@@ -27,7 +32,7 @@ RULES_VERSION = "severity_rules_v2_100"
 
 def score_to_severity(score):
     """
-    Convert CYBERHEAD's 0-100 score
+    Convert CYBERHEAD's final 0-100 severity score
     into a severity level.
     """
 
@@ -44,6 +49,71 @@ def score_to_severity(score):
 
 
 # =========================================================
+# SCORE CALIBRATION
+# =========================================================
+
+def calibrate_score(raw_score):
+    """
+    Convert the accumulated evidence score into
+    CYBERHEAD's final 0-100 severity score.
+
+    Scores up to 70 are left unchanged.
+
+    Scores above 70 are progressively compressed.
+    This prevents many serious threats from all
+    becoming exactly 100/100.
+
+    Examples approximately:
+
+        raw 75  -> 73
+        raw 100 -> 84
+        raw 120 -> 89
+        raw 150 -> 94
+        raw 200 -> 98
+
+    The Critical threshold remains 70.
+    """
+
+    raw_score = max(
+        int(
+            round(
+                raw_score
+            )
+        ),
+        0
+    )
+
+    # Do not change Low / Medium / High scoring.
+    # Also preserve the start of the Critical range.
+    if raw_score <= 70:
+        return raw_score
+
+    compressed = (
+        70
+        +
+        30
+        *
+        (
+            1
+            -
+            math.exp(
+                -(raw_score - 70)
+                / 50
+            )
+        )
+    )
+
+    return min(
+        int(
+            round(
+                compressed
+            )
+        ),
+        100
+    )
+
+
+# =========================================================
 # CVSS
 # =========================================================
 
@@ -57,15 +127,23 @@ def get_max_cvss(cve_rows):
 
     for row in cve_rows:
 
-        record_json = row.get("record_json")
+        record_json = row.get(
+            "record_json"
+        )
 
         if not record_json:
             continue
 
         try:
-            record = json.loads(record_json)
 
-        except (json.JSONDecodeError, TypeError):
+            record = json.loads(
+                record_json
+            )
+
+        except (
+            json.JSONDecodeError,
+            TypeError,
+        ):
             continue
 
         metrics = record.get(
@@ -73,7 +151,10 @@ def get_max_cvss(cve_rows):
             {}
         )
 
-        for metric_name, assessments in metrics.items():
+        for (
+            metric_name,
+            assessments
+        ) in metrics.items():
 
             if not metric_name.startswith(
                 "cvssMetric"
@@ -82,33 +163,42 @@ def get_max_cvss(cve_rows):
 
             for assessment in assessments:
 
-                cvss_data = assessment.get(
-                    "cvssData",
-                    {}
+                cvss_data = (
+                    assessment.get(
+                        "cvssData",
+                        {}
+                    )
                 )
 
-                value = cvss_data.get(
-                    "baseScore"
+                value = (
+                    cvss_data.get(
+                        "baseScore"
+                    )
                 )
 
                 if value is None:
                     continue
 
                 try:
+
                     scores.append(
-                        float(value)
+                        float(
+                            value
+                        )
                     )
 
                 except (
                     TypeError,
-                    ValueError
+                    ValueError,
                 ):
                     pass
 
     if not scores:
         return None
 
-    return max(scores)
+    return max(
+        scores
+    )
 
 
 # =========================================================
@@ -116,9 +206,16 @@ def get_max_cvss(cve_rows):
 # =========================================================
 
 def has_cisa_kev(cve_rows):
+    """
+    Return True when at least one article CVE
+    appears in the CISA Known Exploited
+    Vulnerabilities catalogue.
+    """
 
     return any(
-        row.get("kev_cve_id")
+        row.get(
+            "kev_cve_id"
+        )
         for row in cve_rows
     )
 
@@ -126,6 +223,11 @@ def has_cisa_kev(cve_rows):
 def has_known_ransomware_use(
     cve_rows
 ):
+    """
+    Return True when CISA indicates that at least
+    one linked CVE is known to be used in
+    ransomware campaigns.
+    """
 
     for row in cve_rows:
 
@@ -137,7 +239,9 @@ def has_known_ransomware_use(
         )
 
         value = (
-            str(value)
+            str(
+                value
+            )
             .strip()
             .lower()
         )
@@ -155,23 +259,38 @@ def has_known_ransomware_use(
 def calculate_recency_points(
     published_at
 ):
+    """
+    Give a small score contribution to recent news.
+
+    <= 1 day  -> +5
+    <= 3 days -> +3
+    <= 7 days -> +1
+    older     -> +0
+    """
 
     if not published_at:
+
         return 0, None
 
     try:
 
-        published = datetime.fromisoformat(
-            str(published_at).replace(
-                "Z",
-                "+00:00"
+        published = (
+            datetime.fromisoformat(
+                str(
+                    published_at
+                ).replace(
+                    "Z",
+                    "+00:00"
+                )
             )
         )
 
         if published.tzinfo is None:
 
-            published = published.replace(
-                tzinfo=timezone.utc
+            published = (
+                published.replace(
+                    tzinfo=timezone.utc
+                )
             )
 
         now = datetime.now(
@@ -179,8 +298,13 @@ def calculate_recency_points(
         )
 
         age_days = (
-            now - published
-        ).total_seconds() / 86400
+            (
+                now
+                - published
+            )
+            .total_seconds()
+            / 86400
+        )
 
         age_days = max(
             age_days,
@@ -189,17 +313,21 @@ def calculate_recency_points(
 
     except (
         ValueError,
-        TypeError
+        TypeError,
     ):
+
         return 0, None
 
     if age_days <= 1:
+
         return 5, age_days
 
     if age_days <= 3:
+
         return 3, age_days
 
     if age_days <= 7:
+
         return 1, age_days
 
     return 0, age_days
@@ -210,13 +338,21 @@ def calculate_recency_points(
 # =========================================================
 
 DATA_THEFT_PATTERNS = [
+
     r"\bstolen data\b",
+
     r"\bdata theft\b",
+
     r"\bdata was stolen\b",
+
     r"\bstole data\b",
+
     r"\bdata exfiltration\b",
+
     r"\bexfiltrated data\b",
+
     r"\bstolen customer data\b",
+
     r"\bstolen user data\b",
 ]
 
@@ -225,19 +361,26 @@ def detects_data_theft(
     title,
     text
 ):
+    """
+    Detect explicit evidence that data was stolen
+    or exfiltrated.
+    """
 
     combined = (
         f"{title or ''} "
         f"{text or ''}"
     )
 
-    for pattern in DATA_THEFT_PATTERNS:
+    for pattern in (
+        DATA_THEFT_PATTERNS
+    ):
 
         if re.search(
             pattern,
             combined,
             re.IGNORECASE
         ):
+
             return True
 
     return False
@@ -254,9 +397,9 @@ def parse_number(
     """
     Convert values such as:
 
-    12,000
-    15 thousand
-    2 million
+        12,000
+        15 thousand
+        2 million
 
     into integers.
     """
@@ -272,27 +415,33 @@ def parse_number(
 
     except (
         TypeError,
-        ValueError
+        ValueError,
     ):
+
         return None
 
     suffix = (
-        suffix or ""
+        suffix
+        or ""
     ).lower()
 
     if suffix in (
         "k",
         "thousand",
     ):
+
         number *= 1_000
 
     elif suffix in (
         "m",
         "million",
     ):
+
         number *= 1_000_000
 
-    return int(number)
+    return int(
+        number
+    )
 
 
 def detect_affected_count(
@@ -302,10 +451,10 @@ def detect_affected_count(
     """
     Detect phrases such as:
 
-    12,000 accounts compromised
-    5,000 users affected
-    2 million records exposed
-    affected 20,000 customers
+        12,000 accounts compromised
+        5,000 users affected
+        2 million records exposed
+        affected 20,000 customers
     """
 
     combined = (
@@ -314,33 +463,57 @@ def detect_affected_count(
     )
 
     impact_nouns = (
+
         r"accounts?|"
+
         r"users?|"
+
         r"customers?|"
+
         r"people|"
+
         r"victims?|"
+
         r"devices?|"
+
         r"systems?|"
+
         r"organizations?|"
+
         r"organisations?|"
+
         r"records?"
     )
 
     impact_words = (
+
         r"compromised|"
+
         r"affected|"
+
         r"breached|"
+
         r"exposed|"
+
         r"stolen|"
+
         r"impacted|"
+
         r"infected"
     )
 
     number_pattern = (
-        r"(?P<number>\d[\d,]*(?:\.\d+)?)"
+
+        r"(?P<number>"
+        r"\d[\d,]*(?:\.\d+)?)"
+
         r"\s*"
+
         r"(?P<suffix>"
-        r"million|thousand|m|k"
+        r"million|"
+        r"thousand|"
+        r"m|"
+        r"k"
         r")?"
     )
 
@@ -348,25 +521,41 @@ def detect_affected_count(
 
         (
             number_pattern
+
             + r"(?:\s+[A-Za-z0-9_-]+){0,3}"
+
             + r"\s+(?:"
+
             + impact_nouns
+
             + r")"
+
             + r".{0,60}?"
+
             + r"\b(?:"
+
             + impact_words
+
             + r")\b"
         ),
 
         (
             r"\b(?:"
+
             + impact_words
+
             + r")\b"
+
             + r".{0,40}?"
+
             + number_pattern
+
             + r"(?:\s+[A-Za-z0-9_-]+){0,3}"
+
             + r"\s+(?:"
+
             + impact_nouns
+
             + r")"
         ),
     ]
@@ -384,8 +573,12 @@ def detect_affected_count(
         for match in matches:
 
             count = parse_number(
-                match.group("number"),
-                match.group("suffix"),
+                match.group(
+                    "number"
+                ),
+                match.group(
+                    "suffix"
+                ),
             )
 
             if count is not None:
@@ -395,6 +588,7 @@ def detect_affected_count(
                 )
 
     if not detected_counts:
+
         return None
 
     return max(
@@ -405,20 +599,29 @@ def detect_affected_count(
 def affected_count_points(
     count
 ):
+    """
+    Convert the number of affected entities into
+    severity points.
+    """
 
     if count is None:
+
         return 0
 
     if count >= 100_000:
+
         return 35
 
     if count >= 10_000:
+
         return 30
 
     if count >= 1_000:
+
         return 20
 
     if count >= 100:
+
         return 10
 
     return 5
@@ -429,9 +632,13 @@ def affected_count_points(
 # =========================================================
 
 CRITICAL_INFRASTRUCTURE_PATTERNS = [
+
     r"\bcritical infrastructure\b",
+
     r"\bindustrial control systems?\b",
+
     r"\boperational technology\b",
+
     r"\bpower grid\b",
 ]
 
@@ -440,6 +647,10 @@ def detects_critical_infrastructure(
     title,
     text
 ):
+    """
+    Detect explicit references to critical
+    infrastructure or operational technology.
+    """
 
     combined = (
         f"{title or ''} "
@@ -455,6 +666,7 @@ def detects_critical_infrastructure(
             combined,
             re.IGNORECASE
         ):
+
             return True
 
     return False
@@ -467,9 +679,25 @@ def detects_critical_infrastructure(
 def calculate_severity(
     article
 ):
+    """
+    Calculate CYBERHEAD threat severity.
+
+    Step 1:
+        Evidence indicators accumulate a raw score.
+
+    Step 2:
+        The raw score is calibrated into the final
+        CYBERHEAD 0-100 Severity Score.
+
+    Step 3:
+        The final score is converted to:
+        Low / Medium / High / Critical.
+    """
 
     score = 0
+
     reasons = []
+
 
     category = (
         article.get(
@@ -478,19 +706,29 @@ def calculate_severity(
         or ""
     ).strip()
 
+
     tags = {
-        str(tag).strip()
+
+        str(
+            tag
+        ).strip()
+
         for tag in article.get(
             "tags",
             []
         )
-        if str(tag).strip()
+
+        if str(
+            tag
+        ).strip()
     }
+
 
     cves = article.get(
         "cves",
         []
     )
+
 
     title = (
         article.get(
@@ -499,23 +737,30 @@ def calculate_severity(
         or ""
     )
 
+
     text = (
         article.get(
             "full_content"
         )
+
         or article.get(
             "content"
         )
+
         or ""
     )
+
 
     # =====================================================
     # 1. CVSS
     # =====================================================
 
-    max_cvss = get_max_cvss(
-        cves
+    max_cvss = (
+        get_max_cvss(
+            cves
+        )
     )
+
 
     if max_cvss is not None:
 
@@ -528,6 +773,7 @@ def calculate_severity(
                 f"{max_cvss:.1f}: +35"
             )
 
+
         elif max_cvss >= 7.0:
 
             score += 25
@@ -536,6 +782,7 @@ def calculate_severity(
                 f"High CVSS score "
                 f"{max_cvss:.1f}: +25"
             )
+
 
         elif max_cvss >= 4.0:
 
@@ -546,6 +793,7 @@ def calculate_severity(
                 f"{max_cvss:.1f}: +15"
             )
 
+
         elif max_cvss > 0:
 
             score += 5
@@ -555,13 +803,17 @@ def calculate_severity(
                 f"{max_cvss:.1f}: +5"
             )
 
+
     # =====================================================
     # 2. CISA KEV / ACTIVE EXPLOITATION
     # =====================================================
 
-    kev = has_cisa_kev(
-        cves
+    kev = (
+        has_cisa_kev(
+            cves
+        )
     )
+
 
     if kev:
 
@@ -571,6 +823,7 @@ def calculate_severity(
             "CVE listed in CISA Known Exploited "
             "Vulnerabilities catalog: +40"
         )
+
 
     # =====================================================
     # 3. RANSOMWARE USE CONFIRMED BY CISA
@@ -582,6 +835,7 @@ def calculate_severity(
         )
     )
 
+
     if ransomware_use:
 
         score += 20
@@ -590,6 +844,7 @@ def calculate_severity(
             "CISA reports known ransomware "
             "campaign use: +20"
         )
+
 
     # =====================================================
     # 4. ZERO-DAY
@@ -603,6 +858,7 @@ def calculate_severity(
             "Zero-day vulnerability detected: +20"
         )
 
+
     # =====================================================
     # 5. CATEGORY
     # =====================================================
@@ -615,6 +871,7 @@ def calculate_severity(
             "Ransomware incident: +25"
         )
 
+
     elif category == "Data breaches":
 
         score += 20
@@ -622,6 +879,7 @@ def calculate_severity(
         reasons.append(
             "Data breach incident: +20"
         )
+
 
     elif category == "DDoS":
 
@@ -631,6 +889,7 @@ def calculate_severity(
             "DDoS incident: +15"
         )
 
+
     elif category == "Other malware":
 
         score += 10
@@ -639,6 +898,7 @@ def calculate_severity(
             "Malware-related incident: +10"
         )
 
+
     elif category == "Phishing":
 
         score += 10
@@ -646,6 +906,11 @@ def calculate_severity(
         reasons.append(
             "Phishing incident: +10"
         )
+
+
+    # Vulnerabilities and Other cybersecurity news
+    # do not receive automatic category points.
+
 
     # =====================================================
     # 6. TECHNICAL TAGS
@@ -659,6 +924,7 @@ def calculate_severity(
             "Remote Code Execution detected: +20"
         )
 
+
     if "Privilege Escalation" in tags:
 
         score += 12
@@ -666,6 +932,7 @@ def calculate_severity(
         reasons.append(
             "Privilege Escalation detected: +12"
         )
+
 
     if "Supply Chain" in tags:
 
@@ -675,6 +942,7 @@ def calculate_severity(
             "Supply-chain attack detected: +12"
         )
 
+
     if "Credential Theft" in tags:
 
         score += 15
@@ -682,6 +950,7 @@ def calculate_severity(
         reasons.append(
             "Credential theft detected: +15"
         )
+
 
     if "SQL Injection" in tags:
 
@@ -691,9 +960,13 @@ def calculate_severity(
             "SQL Injection detected: +10"
         )
 
+
     if (
         "Social Engineering" in tags
-        and category != "Phishing"
+
+        and
+
+        category != "Phishing"
     ):
 
         score += 8
@@ -701,6 +974,7 @@ def calculate_severity(
         reasons.append(
             "Social engineering detected: +8"
         )
+
 
     # =====================================================
     # 7. DATA THEFT
@@ -718,6 +992,7 @@ def calculate_severity(
             "found in article: +15"
         )
 
+
     # =====================================================
     # 8. NUMBER AFFECTED
     # =====================================================
@@ -729,6 +1004,7 @@ def calculate_severity(
         )
     )
 
+
     if affected_count is not None:
 
         impact_points = (
@@ -737,13 +1013,16 @@ def calculate_severity(
             )
         )
 
-        score += impact_points
+        score += (
+            impact_points
+        )
 
         reasons.append(
             f"Large-scale impact detected "
             f"({affected_count:,} affected): "
             f"+{impact_points}"
         )
+
 
     # =====================================================
     # 9. CRITICAL INFRASTRUCTURE
@@ -756,6 +1035,7 @@ def calculate_severity(
         )
     )
 
+
     if critical_infrastructure:
 
         score += 15
@@ -764,6 +1044,7 @@ def calculate_severity(
             "Critical-infrastructure impact "
             "detected: +15"
         )
+
 
     # =====================================================
     # 10. RECENCY
@@ -778,9 +1059,12 @@ def calculate_severity(
         )
     )
 
+
     if recency_points:
 
-        score += recency_points
+        score += (
+            recency_points
+        )
 
         reasons.append(
             f"Recent publication "
@@ -788,19 +1072,48 @@ def calculate_severity(
             f"+{recency_points}"
         )
 
+
     # =====================================================
-    # FINAL SCORE
+    # RAW EVIDENCE SCORE
     # =====================================================
 
-    score = min(
-        int(round(score)),
-        100
+    raw_score = int(
+        round(
+            score
+        )
     )
 
-    severity = score_to_severity(
-        score
+
+    # =====================================================
+    # FINAL CALIBRATED SCORE
+    # =====================================================
+
+    score = (
+        calibrate_score(
+            raw_score
+        )
     )
 
+
+    severity = (
+        score_to_severity(
+            score
+        )
+    )
+
+
+    # Explain when calibration changed the numeric result.
+    if score != raw_score:
+
+        reasons.append(
+            f"CYBERHEAD score calibration: "
+            f"raw evidence total "
+            f"{raw_score} -> "
+            f"{score}/100"
+        )
+
+
+    # If no evidence at all was detected.
     if not reasons:
 
         reasons.append(
@@ -808,12 +1121,21 @@ def calculate_severity(
             "were detected: +0"
         )
 
+
+    # =====================================================
+    # RESULT
+    # =====================================================
+
     return {
+
         "severity":
             severity,
 
         "score":
             score,
+
+        "raw_score":
+            raw_score,
 
         "reasons":
             reasons,
@@ -834,7 +1156,9 @@ def calculate_severity(
             critical_infrastructure,
 
         "tags":
-            sorted(tags),
+            sorted(
+                tags
+            ),
     }
 
 
@@ -846,8 +1170,12 @@ def process_articles(
     limit=20,
     retry_failed=False
 ):
+    """
+    Process articles waiting for severity analysis.
+    """
 
     initialise_database()
+
 
     articles = (
         get_articles_for_severity(
@@ -855,6 +1183,7 @@ def process_articles(
             retry_failed=retry_failed
         )
     )
+
 
     if not articles:
 
@@ -865,18 +1194,28 @@ def process_articles(
 
         return
 
+
     success = 0
+
     excluded = 0
+
     failed = 0
 
-    for position, queued_article in enumerate(
+
+    for (
+        position,
+        queued_article
+    ) in enumerate(
         articles,
         start=1
     ):
 
-        article_id = queued_article[
-            "id"
-        ]
+        article_id = (
+            queued_article[
+                "id"
+            ]
+        )
+
 
         try:
 
@@ -886,6 +1225,7 @@ def process_articles(
                 )
             )
 
+
             if article is None:
 
                 raise ValueError(
@@ -893,37 +1233,52 @@ def process_articles(
                     f"could not be loaded."
                 )
 
-            # ---------------------------------------------
-            # Check whether article should be scored
-            # ---------------------------------------------
+
+            # =================================================
+            # CHECK ARTICLE SUITABILITY
+            # =================================================
 
             text = (
+
                 article.get(
                     "full_content"
                 )
+
                 or article.get(
                     "content"
                 )
+
                 or ""
             )
+
 
             (
                 suitable,
                 exclusion_reason
             ) = check_article_suitability(
+
                 article.get(
                     "title"
                 ),
+
                 text
             )
+
 
             if not suitable:
 
                 save_severity_exclusion(
-                    article_id=article_id,
-                    reason=exclusion_reason,
-                    rules_version=RULES_VERSION,
+
+                    article_id=
+                        article_id,
+
+                    reason=
+                        exclusion_reason,
+
+                    rules_version=
+                        RULES_VERSION,
                 )
+
 
                 print(
                     f"[{position}/{len(articles)}] "
@@ -932,31 +1287,47 @@ def process_articles(
                     f"({exclusion_reason})"
                 )
 
+
                 excluded += 1
 
                 continue
 
-            # ---------------------------------------------
-            # Calculate severity
-            # ---------------------------------------------
 
-            result = calculate_severity(
-                article
+            # =================================================
+            # CALCULATE SEVERITY
+            # =================================================
+
+            result = (
+                calculate_severity(
+                    article
+                )
             )
+
 
             save_severity_result(
-                article_id=article_id,
-                severity=result[
-                    "severity"
-                ],
-                score=result[
-                    "score"
-                ],
-                reasons=result[
-                    "reasons"
-                ],
-                rules_version=RULES_VERSION,
+
+                article_id=
+                    article_id,
+
+                severity=
+                    result[
+                        "severity"
+                    ],
+
+                score=
+                    result[
+                        "score"
+                    ],
+
+                reasons=
+                    result[
+                        "reasons"
+                    ],
+
+                rules_version=
+                    RULES_VERSION,
             )
+
 
             print(
                 f"[{position}/{len(articles)}] "
@@ -965,15 +1336,43 @@ def process_articles(
                 f"({result['score']}/100)"
             )
 
-            for reason in result[
-                "reasons"
-            ]:
+
+            # Show the raw score too when calibration
+            # actually changed the result.
+
+            if (
+                result[
+                    "raw_score"
+                ]
+                != result[
+                    "score"
+                ]
+            ):
+
+                print(
+                    f"    Raw evidence score: "
+                    f"{result['raw_score']}"
+                )
+
+                print(
+                    f"    Calibrated score: "
+                    f"{result['score']}/100"
+                )
+
+
+            for reason in (
+                result[
+                    "reasons"
+                ]
+            ):
 
                 print(
                     f"    - {reason}"
                 )
 
+
             success += 1
+
 
         except Exception as error:
 
@@ -982,31 +1381,39 @@ def process_articles(
                 error
             )
 
+
             print(
                 f"ERROR: article "
                 f"{article_id}; "
                 f"{error}"
             )
 
+
             failed += 1
 
+
     # =====================================================
-    # SUMMARY
+    # PROCESSING SUMMARY
     # =====================================================
 
+    print()
+
     print(
-        "\n--- SEVERITY SUMMARY ---"
+        "--- SEVERITY SUMMARY ---"
     )
+
 
     print(
         f"Scored successfully: "
         f"{success}"
     )
 
+
     print(
         f"Excluded: "
         f"{excluded}"
     )
+
 
     print(
         f"Failed: "
@@ -1020,22 +1427,61 @@ def process_articles(
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser()
+    parser = (
+        argparse.ArgumentParser(
+            description=(
+                "Run CYBERHEAD "
+                "severity analysis."
+            )
+        )
+    )
+
 
     parser.add_argument(
+
         "--limit",
+
         type=int,
-        default=20
+
+        default=20,
+
+        help=(
+            "Maximum number of articles "
+            "to process."
+        ),
     )
+
 
     parser.add_argument(
+
         "--retry-failed",
-        action="store_true"
+
+        action="store_true",
+
+        help=(
+            "Retry articles whose previous "
+            "severity analysis failed."
+        ),
     )
 
-    args = parser.parse_args()
+
+    args = (
+        parser.parse_args()
+    )
+
+
+    if args.limit < 1:
+
+        parser.error(
+            "--limit must be at least 1."
+        )
+
 
     process_articles(
-        limit=args.limit,
-        retry_failed=args.retry_failed
+
+        limit=
+            args.limit,
+
+        retry_failed=
+            args.retry_failed,
     )

@@ -1,190 +1,508 @@
 import calendar
 import logging
-from datetime import datetime, timezone
-from urllib.error import URLError
-from urllib.parse import urldefrag, urlsplit
-from urllib.request import Request, urlopen
+
+from datetime import (
+    datetime,
+    timezone,
+)
+
+from urllib.parse import (
+    urldefrag,
+    urlsplit,
+)
 
 import feedparser
-from bs4 import BeautifulSoup
 
-from app.database import initialise_database, save_article
-from app.sources import RSS_SOURCES
+from bs4 import (
+    BeautifulSoup,
+)
+
+from app.database import (
+    initialise_database,
+    save_article,
+)
+
+from app.source_manager import (
+    download_feed,
+    get_enabled_sources,
+    initialise_source_database,
+    mark_source_check,
+)
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    __name__
+)
 
-TIMEOUT_SECONDS = 30
-MAX_FEED_BYTES = 5 * 1024 * 1024
+
+# =========================================================
+# TEXT CLEANING
+# =========================================================
+
+def clean_text(
+    value
+):
+    """
+    Remove HTML and unnecessary whitespace.
+    """
+
+    soup = (
+        BeautifulSoup(
+            value or "",
+            "html.parser"
+        )
+    )
 
 
-def clean_text(value):
-    """Remove HTML and unnecessary whitespace."""
+    for element in soup([
+        "script",
+        "style",
+    ]):
 
-    soup = BeautifulSoup(value or "", "html.parser")
-
-    for element in soup(["script", "style"]):
         element.decompose()
 
-    return " ".join(soup.get_text(separator=" ", strip=True).split())
+
+    return " ".join(
+        soup.get_text(
+            separator=" ",
+            strip=True
+        ).split()
+    )
 
 
-def get_publication_date(entry):
-    """Return the supplied publication date in UTC, or None."""
+# =========================================================
+# PUBLICATION DATE
+# =========================================================
 
-    parsed_date = entry.get("published_parsed")
+def get_publication_date(
+    entry
+):
+    """
+    Return publication date in UTC.
+    """
+
+    parsed_date = (
+        entry.get(
+            "published_parsed"
+        )
+    )
+
 
     if parsed_date is None:
+
         return None
+
 
     try:
-        timestamp = calendar.timegm(parsed_date)
 
-        return datetime.fromtimestamp(
-            timestamp,
-            tz=timezone.utc
-        ).isoformat()
+        timestamp = (
+            calendar.timegm(
+                parsed_date
+            )
+        )
 
-    except (ValueError, OverflowError, OSError):
+
+        return (
+            datetime.fromtimestamp(
+                timestamp,
+                tz=timezone.utc
+            ).isoformat()
+        )
+
+
+    except (
+        ValueError,
+        OverflowError,
+        OSError,
+    ):
+
         return None
 
 
-def get_article_content(entry):
-    """Use feed content when available; otherwise use its summary."""
+# =========================================================
+# RSS CONTENT
+# =========================================================
 
-    for item in entry.get("content", []):
-        if item.get("type") in ("text/plain", "text/html", "application/xhtml+xml"):
-            text = clean_text(item.get("value"))
+def get_article_content(
+    entry
+):
+    """
+    Use RSS content when supplied.
+    Otherwise use the feed summary.
+    """
+
+    for item in entry.get(
+        "content",
+        []
+    ):
+
+        if item.get(
+            "type"
+        ) in (
+            "text/plain",
+            "text/html",
+            "application/xhtml+xml",
+        ):
+
+            text = (
+                clean_text(
+                    item.get(
+                        "value"
+                    )
+                )
+            )
+
 
             if text:
+
                 return text
 
-    return clean_text(entry.get("summary")) or None
+
+    return (
+        clean_text(
+            entry.get(
+                "summary"
+            )
+        )
+        or None
+    )
 
 
-def get_article_url(entry):
-    """Accept HTTP(S) links and remove page fragments."""
+# =========================================================
+# ARTICLE URL
+# =========================================================
 
-    raw_url = entry.get("link", "").strip()
+def get_article_url(
+    entry
+):
+    """
+    Extract the individual article URL
+    from the RSS/Atom entry.
+    """
+
+    raw_url = (
+        entry.get(
+            "link",
+            ""
+        ).strip()
+    )
+
 
     try:
-        url, _ = urldefrag(raw_url)
-        parts = urlsplit(url)
 
-        if parts.scheme not in ("http", "https") or not parts.hostname:
+        url, _ = (
+            urldefrag(
+                raw_url
+            )
+        )
+
+
+        parts = (
+            urlsplit(
+                url
+            )
+        )
+
+
+        if (
+            parts.scheme
+            not in (
+                "http",
+                "https",
+            )
+
+            or
+
+            not parts.hostname
+        ):
+
             return None
+
 
         return url
 
+
     except ValueError:
+
         return None
 
 
-def download_feed(url):
-    """Download with a timeout and a maximum response size."""
+# =========================================================
+# COLLECT ONE SOURCE
+# =========================================================
 
-    request = Request(
-        url,
-        headers={
-            "User-Agent": "CYBERHEAD-News/0.1 (RSS collector)",
-            "Accept": "application/rss+xml, application/atom+xml, application/xml"
-        }
-    )
+def collect_source(
+    source
+):
 
-    with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
-        data = response.read(MAX_FEED_BYTES + 1)
+    try:
 
-    if len(data) > MAX_FEED_BYTES:
-        raise ValueError("Feed exceeds the 5 MB size limit.")
-
-    return data
-
-
-def collect_source(source):
-    feed_bytes = download_feed(source["url"])
-    feed = feedparser.parse(feed_bytes)
-
-    if not feed.get("version"):
-        raise ValueError("The response is not a recognised RSS or Atom feed.")
-
-    if feed.bozo:
-        logger.warning(
-            "%s: feed has parsing issues; processing readable entries.",
-            source["name"]
+        (
+            feed_bytes,
+            final_feed_url,
+        ) = download_feed(
+            source[
+                "url"
+            ]
         )
 
-    added = 0
-    duplicates = 0
-    invalid = 0
 
-    for entry in feed.entries:
-        title = clean_text(entry.get("title"))
-        url = get_article_url(entry)
-
-        if not title or not url:
-            invalid += 1
-            continue
-
-        was_added = save_article(
-            title=title,
-            url=url,
-            source=source["name"],
-            published_at=get_publication_date(entry),
-            content=get_article_content(entry)
+        feed = (
+            feedparser.parse(
+                feed_bytes
+            )
         )
 
-        if was_added:
-            added += 1
-        else:
-            duplicates += 1
 
-    logger.info(
-        "%s: %s added, %s existing URLs skipped, %s invalid entries skipped.",
-        source["name"],
-        added,
-        duplicates,
-        invalid
-    )
+        if not feed.get(
+            "version"
+        ):
 
-    return added
-
-
-def collect_all():
-    initialise_database()
-
-    total_added = 0
-    failed_sources = 0
-
-    for source in RSS_SOURCES:
-        logger.info("Collecting from %s...", source["name"])
-
-        try:
-            total_added += collect_source(source)
-
-        except (URLError, OSError, ValueError) as error:
-            failed_sources += 1
-
-            logger.error(
-                "%s could not be collected: %s",
-                source["name"],
-                error
+            raise ValueError(
+                "The response is not a "
+                "recognised RSS or Atom feed."
             )
 
-    logger.info(
-        "Finished: %s new articles; %s source(s) failed.",
-        total_added,
-        failed_sources
+
+        if feed.bozo:
+
+            logger.warning(
+
+                "%s: feed has parsing issues; "
+                "processing readable entries.",
+
+                source[
+                    "name"
+                ],
+            )
+
+
+        added = 0
+
+        duplicates = 0
+
+        invalid = 0
+
+
+        for entry in feed.entries:
+
+            title = (
+                clean_text(
+                    entry.get(
+                        "title"
+                    )
+                )
+            )
+
+
+            url = (
+                get_article_url(
+                    entry
+                )
+            )
+
+
+            if (
+                not title
+                or
+                not url
+            ):
+
+                invalid += 1
+
+                continue
+
+
+            was_added = (
+                save_article(
+
+                    title=
+                        title,
+
+                    url=
+                        url,
+
+                    source=
+                        source[
+                            "name"
+                        ],
+
+                    published_at=
+                        get_publication_date(
+                            entry
+                        ),
+
+                    content=
+                        get_article_content(
+                            entry
+                        ),
+                )
+            )
+
+
+            if was_added:
+
+                added += 1
+
+            else:
+
+                duplicates += 1
+
+
+        mark_source_check(
+
+            source[
+                "id"
+            ],
+
+            success=True,
+        )
+
+
+        logger.info(
+
+            "%s: %s added, "
+            "%s existing URLs skipped, "
+            "%s invalid entries skipped.",
+
+            source[
+                "name"
+            ],
+
+            added,
+
+            duplicates,
+
+            invalid,
+        )
+
+
+        return added
+
+
+    except Exception as error:
+
+        mark_source_check(
+
+            source[
+                "id"
+            ],
+
+            success=False,
+
+            error=error,
+        )
+
+
+        raise
+
+
+# =========================================================
+# COLLECT ALL ENABLED SOURCES
+# =========================================================
+
+def collect_all():
+
+    initialise_database()
+
+    initialise_source_database()
+
+
+    sources = (
+        get_enabled_sources()
     )
+
+
+    if not sources:
+
+        logger.warning(
+            "No active RSS sources are configured."
+        )
+
+        return 0
+
+
+    total_added = 0
+
+    failed_sources = 0
+
+
+    for source in sources:
+
+        logger.info(
+
+            "Collecting from %s...",
+
+            source[
+                "name"
+            ],
+        )
+
+
+        try:
+
+            total_added += (
+                collect_source(
+                    source
+                )
+            )
+
+
+        except Exception as error:
+
+            failed_sources += 1
+
+
+            logger.error(
+
+                "%s could not be collected: %s",
+
+                source[
+                    "name"
+                ],
+
+                error,
+            )
+
+
+    logger.info(
+
+        "Finished: %s new articles; "
+        "%s source(s) failed.",
+
+        total_added,
+
+        failed_sources,
+    )
+
 
     return failed_sources
 
 
+# =========================================================
+# COMMAND LINE
+# =========================================================
+
 if __name__ == "__main__":
+
     logging.basicConfig(
+
         level=logging.INFO,
-        format="%(levelname)s: %(message)s"
+
+        format=(
+            "%(levelname)s: "
+            "%(message)s"
+        ),
     )
 
-    failures = collect_all()
 
-    raise SystemExit(1 if failures else 0)
+    failures = (
+        collect_all()
+    )
+
+
+    raise SystemExit(
+        1
+        if failures
+        else 0
+    )

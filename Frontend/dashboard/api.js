@@ -1,24 +1,431 @@
-/* Single integration boundary. UI never calls fetch directly. */
+/* =========================================================
+   CYBERHEAD FRONTEND API
+   ========================================================= */
+
 window.CyberheadAPI = (() => {
-  const config = window.CYBERHEAD_CONFIG;
-  async function request(path) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+
+  "use strict";
+
+
+  const config =
+    window.CYBERHEAD_CONFIG;
+
+
+  // =======================================================
+  // GENERIC REQUEST
+  // =======================================================
+
+  async function request(
+    path,
+    options = {}
+  ) {
+
+    const controller =
+      new AbortController();
+
+
+    const timer =
+      setTimeout(
+        () =>
+          controller.abort(),
+
+        config.timeoutMs
+        ||
+        10000
+      );
+
+
+    const method =
+      options.method
+      ||
+      "GET";
+
+
+    const headers = {
+
+      Accept:
+        "application/json",
+
+      ...(
+        options.body
+          ? {
+              "Content-Type":
+                "application/json"
+            }
+          : {}
+      ),
+
+      ...(
+        options.headers
+        ||
+        {}
+      )
+    };
+
+
     try {
-      const response = await fetch(config.apiBaseUrl.replace(/\/$/, '') + path, { signal: controller.signal, headers: { Accept: 'application/json' } });
-      if (!response.ok) throw new Error(`Server returned ${response.status}`);
-      return await response.json();
-    } finally { clearTimeout(timer); }
-  }
-  function validate(data) {
-    if (!data || !Array.isArray(data.reports) || !Array.isArray(data.sources) || !Array.isArray(data.alerts) || !Array.isArray(data.briefing?.reportIds)) throw new Error('Invalid dashboard response');
-    for (const r of data.reports) {
-      if (typeof r.id !== 'string' || typeof r.title !== 'string' || !['Critical','High','Medium','Low'].includes(r.severity) || !Number.isFinite(r.score) || r.score < 0 || r.score > 100 || !Number.isFinite(r.confidence) || r.confidence < 0 || r.confidence > 1 || !Array.isArray(r.sourceIds) || !Array.isArray(r.indicators) || !Array.isArray(r.tags)) throw new Error('Invalid report data');
+
+      const response =
+        await fetch(
+
+          config.apiBaseUrl
+            .replace(
+              /\/$/,
+              ""
+            )
+
+          +
+
+          path,
+
+          {
+
+            method,
+
+            headers,
+
+            signal:
+              controller.signal,
+
+            body:
+              options.body
+              ?? undefined
+          }
+        );
+
+
+      let data =
+        null;
+
+
+      try {
+
+        data =
+          await response.json();
+
+      } catch {
+
+        data =
+          null;
+      }
+
+
+      if (
+        !response.ok
+      ) {
+
+        let message =
+          `Server returned ${response.status}`;
+
+
+        if (
+          typeof data?.detail
+          === "string"
+        ) {
+
+          message =
+            data.detail;
+
+        } else if (
+          data?.detail?.message
+        ) {
+
+          message =
+            data.detail.message;
+
+        }
+
+
+        throw new Error(
+          message
+        );
+      }
+
+
+      return data;
+
+
+    } finally {
+
+      clearTimeout(
+        timer
+      );
     }
-    return data;
   }
-  return { async getDashboard() {
-    if (config.mode === 'mock') return validate(JSON.parse(JSON.stringify(window.CYBERHEAD_MOCK)));
-    return validate(await request('/dashboard'));
-  }};
+
+
+  // =======================================================
+  // QUERY STRING
+  // =======================================================
+
+  function buildQuery(
+    parameters
+  ) {
+
+    const query =
+      new URLSearchParams();
+
+
+    Object.entries(
+      parameters
+      ||
+      {}
+    ).forEach(
+      ([
+        key,
+        value
+      ]) => {
+
+        if (
+          value === undefined
+          ||
+          value === null
+          ||
+          value === ""
+        ) {
+
+          return;
+        }
+
+
+        query.set(
+          key,
+          value
+        );
+      }
+    );
+
+
+    const text =
+      query.toString();
+
+
+    return (
+      text
+        ? `?${text}`
+        : ""
+    );
+  }
+
+
+  // =======================================================
+  // DAILY BRIEFING
+  // =======================================================
+
+  async function getDailyBriefing() {
+
+    return request(
+      "/daily-briefing"
+    );
+  }
+
+
+  // =======================================================
+  // STATISTICS
+  // =======================================================
+
+  async function getStats() {
+
+    return request(
+      "/stats"
+    );
+  }
+
+
+  // =======================================================
+  // ARTICLES
+  // =======================================================
+
+  async function getArticles(
+    {
+      category = "",
+      severity = "",
+      search = "",
+      sort = "latest",
+      limit = 20,
+      offset = 0
+    } = {}
+  ) {
+
+    const query =
+      buildQuery({
+
+        category,
+
+        severity,
+
+        search,
+
+        sort,
+
+        limit,
+
+        offset
+      });
+
+
+    return request(
+      `/articles${query}`
+    );
+  }
+
+
+  // =======================================================
+  // SINGLE ARTICLE
+  // =======================================================
+
+  async function getArticleDetail(
+    articleId
+  ) {
+
+    return request(
+      `/articles/${encodeURIComponent(
+        articleId
+      )}`
+    );
+  }
+
+
+  // =======================================================
+  // CATEGORY LIST
+  // =======================================================
+
+  async function getCategories() {
+
+    return request(
+      "/categories"
+    );
+  }
+
+
+  // =======================================================
+  // SEVERITY LIST
+  // =======================================================
+
+  async function getSeverities() {
+
+    return request(
+      "/severities"
+    );
+  }
+
+
+  // =======================================================
+  // SOURCE LIST
+  // =======================================================
+
+  async function getSources() {
+
+    return request(
+      "/sources"
+    );
+  }
+
+
+  // =======================================================
+  // TEST SOURCE
+  // =======================================================
+
+  async function testSource(
+    url
+  ) {
+
+    return request(
+      "/sources/test",
+      {
+
+        method:
+          "POST",
+
+        body:
+          JSON.stringify({
+            url
+          })
+      }
+    );
+  }
+
+
+  // =======================================================
+  // ADD SOURCE
+  // =======================================================
+
+  async function addSource(
+    name,
+    url
+  ) {
+
+    return request(
+      "/sources",
+      {
+
+        method:
+          "POST",
+
+        body:
+          JSON.stringify({
+            name,
+            url
+          })
+      }
+    );
+  }
+
+
+  // =======================================================
+  // ENABLE / DISABLE SOURCE
+  // =======================================================
+
+  async function setSourceEnabled(
+    sourceId,
+    enabled
+  ) {
+
+    return request(
+
+      `/sources/${encodeURIComponent(
+        sourceId
+      )}/enabled`,
+
+      {
+
+        method:
+          "PATCH",
+
+        body:
+          JSON.stringify({
+            enabled
+          })
+      }
+    );
+  }
+
+
+  // =======================================================
+  // PUBLIC API
+  // =======================================================
+
+  return {
+
+    getDailyBriefing,
+
+    getStats,
+
+    getArticles,
+
+    getArticleDetail,
+
+    getCategories,
+
+    getSeverities,
+
+    getSources,
+
+    testSource,
+
+    addSource,
+
+    setSourceEnabled
+  };
+
 })();
