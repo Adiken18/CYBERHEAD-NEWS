@@ -1,20 +1,51 @@
+# =========================================================
+# CYBERHEAD NEWS
+# =========================================================
+
 # Python virtual environments
-venv/
 .venv/
+venv/
+env/
 
-# Python cache files
+# Python cache / test cache
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# Local secrets
+# Local environment / secrets
 .env
-# Local development database
+.env.*
+!.env.example
+
+# CYBERHEAD SQLite databases and backups
 backend/cyberhead.db
 backend/cyberhead.db-*
+/cyberhead.db
+/cyberhead.db-*
 
-#csv export
+# SQLite temporary files
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Data exports
 backend/data/exports/
 
-# Pipeline logs
+# Logs
 pipeline.log
+*.log
 
+# Operating-system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor temporary files
+*.swp
+*.swo
+*~
