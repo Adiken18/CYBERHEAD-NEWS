@@ -213,8 +213,9 @@ def api_articles(
         min_length=1,
 
         description=(
-            "Search article title, summary "
-            "and extracted article text."
+            "Search article titles, summaries, article text, "
+            "sources, categories, severities, CVEs "
+            "and threat tags."
         ),
     ),
 
@@ -226,7 +227,7 @@ def api_articles(
         default="latest",
 
         description=(
-            "Sort by latest publication "
+            "Sort matching reports by latest publication "
             "or highest severity."
         ),
     ),
@@ -256,9 +257,9 @@ def api_articles(
     ),
 ):
 
-    # -----------------------------------------------------
-    # Validate category
-    # -----------------------------------------------------
+    # =====================================================
+    # VALIDATE CATEGORY
+    # =====================================================
 
     if (
         category is not None
@@ -281,9 +282,10 @@ def api_articles(
             },
         )
 
-    # -----------------------------------------------------
-    # Build SQL filters
-    # -----------------------------------------------------
+
+    # =====================================================
+    # BASE FILTERS
+    # =====================================================
 
     conditions = [
 
@@ -296,8 +298,13 @@ def api_articles(
         "severity_score IS NOT NULL",
     ]
 
+
     parameters = []
 
+
+    # =====================================================
+    # CATEGORY FILTER
+    # =====================================================
 
     if category is not None:
 
@@ -310,6 +317,10 @@ def api_articles(
         )
 
 
+    # =====================================================
+    # SEVERITY FILTER
+    # =====================================================
+
     if severity is not None:
 
         conditions.append(
@@ -321,40 +332,157 @@ def api_articles(
         )
 
 
+    # =====================================================
+    # SEARCH
+    # =====================================================
+
+    search_value = None
+
+    exact_search_value = None
+
+
     if search is not None:
 
-        search_value = (
-            f"%{search.strip().lower()}%"
+        cleaned_search = (
+            search
+            .strip()
+            .lower()
         )
 
-        conditions.append(
-            """
-            (
-                lower(title) LIKE ?
 
-                OR lower(
-                    COALESCE(
-                        summary,
-                        ''
-                    )
-                ) LIKE ?
+        if cleaned_search:
 
-                OR lower(
-                    COALESCE(
-                        full_content,
-                        ''
-                    )
-                ) LIKE ?
+            search_value = (
+                f"%{cleaned_search}%"
             )
-            """
-        )
 
-        parameters.extend([
-            search_value,
-            search_value,
-            search_value,
-        ])
+            exact_search_value = (
+                cleaned_search
+            )
 
+
+            conditions.append(
+                """
+                (
+                    lower(
+                        COALESCE(
+                            title,
+                            ''
+                        )
+                    ) LIKE ?
+
+                    OR lower(
+                        COALESCE(
+                            summary,
+                            ''
+                        )
+                    ) LIKE ?
+
+                    OR lower(
+                        COALESCE(
+                            full_content,
+                            ''
+                        )
+                    ) LIKE ?
+
+                    OR lower(
+                        COALESCE(
+                            source,
+                            ''
+                        )
+                    ) LIKE ?
+
+                    OR lower(
+                        COALESCE(
+                            category,
+                            ''
+                        )
+                    ) LIKE ?
+
+                    OR lower(
+                        COALESCE(
+                            severity,
+                            ''
+                        )
+                    ) LIKE ?
+
+                    OR lower(
+                        COALESCE(
+                            why_it_matters,
+                            ''
+                        )
+                    ) LIKE ?
+
+                    OR lower(
+                        COALESCE(
+                            recommendations,
+                            ''
+                        )
+                    ) LIKE ?
+
+                    OR EXISTS (
+
+                        SELECT 1
+
+                        FROM article_cves
+
+                        WHERE
+                            article_cves.article_id
+                            =
+                            articles.id
+
+                            AND lower(
+                                article_cves.cve_id
+                            ) LIKE ?
+                    )
+
+                    OR EXISTS (
+
+                        SELECT 1
+
+                        FROM article_tags
+
+                        WHERE
+                            article_tags.article_id
+                            =
+                            articles.id
+
+                            AND lower(
+                                article_tags.tag
+                            ) LIKE ?
+                    )
+                )
+                """
+            )
+
+
+            parameters.extend([
+
+                search_value,  # title
+
+                search_value,  # summary
+
+                search_value,  # full article
+
+                search_value,  # source
+
+                search_value,  # category
+
+                search_value,  # severity
+
+                search_value,  # why it matters
+
+                search_value,  # recommendations
+
+                search_value,  # CVE
+
+                search_value,  # threat tag
+            ])
+
+
+    # =====================================================
+    # BUILD WHERE CLAUSE
+    # =====================================================
 
     where_clause = (
         " AND ".join(
@@ -362,11 +490,330 @@ def api_articles(
         )
     )
 
-    # -----------------------------------------------------
-    # Sorting
-    # -----------------------------------------------------
 
-    if sort == "severity":
+    # =====================================================
+    # SEARCH RELEVANCE
+    # =====================================================
+
+    relevance_clause = ""
+
+    relevance_parameters = []
+
+
+    if (
+        search_value is not None
+        and exact_search_value is not None
+    ):
+
+        relevance_clause = """
+            CASE
+
+                /*
+                 * Exact CYBERHEAD severity.
+                 *
+                 * Example:
+                 * search = Critical
+                 *
+                 * Actual Critical reports should appear
+                 * before articles that only mention the
+                 * word "critical".
+                 */
+                WHEN lower(
+                    COALESCE(
+                        severity,
+                        ''
+                    )
+                ) = ?
+                THEN 140
+
+
+                /*
+                 * Exact cybersecurity category.
+                 *
+                 * Example:
+                 * search = Ransomware
+                 */
+                WHEN lower(
+                    COALESCE(
+                        category,
+                        ''
+                    )
+                ) = ?
+                THEN 135
+
+
+                /*
+                 * Exact CVE match.
+                 *
+                 * Example:
+                 * CVE-2026-12345
+                 */
+                WHEN EXISTS (
+
+                    SELECT 1
+
+                    FROM article_cves
+
+                    WHERE
+                        article_cves.article_id
+                        =
+                        articles.id
+
+                        AND lower(
+                            article_cves.cve_id
+                        ) = ?
+                )
+                THEN 130
+
+
+                /*
+                 * Exact threat-tag match.
+                 *
+                 * Example:
+                 * Remote Code Execution
+                 */
+                WHEN EXISTS (
+
+                    SELECT 1
+
+                    FROM article_tags
+
+                    WHERE
+                        article_tags.article_id
+                        =
+                        articles.id
+
+                        AND lower(
+                            article_tags.tag
+                        ) = ?
+                )
+                THEN 125
+
+
+                /*
+                 * Exact title match.
+                 */
+                WHEN lower(
+                    COALESCE(
+                        title,
+                        ''
+                    )
+                ) = ?
+                THEN 120
+
+
+                /*
+                 * Search term appears in title.
+                 *
+                 * Example:
+                 * search = Atlassian
+                 */
+                WHEN lower(
+                    COALESCE(
+                        title,
+                        ''
+                    )
+                ) LIKE ?
+                THEN 110
+
+
+                /*
+                 * Partial CVE match.
+                 *
+                 * Example:
+                 * search = CVE-2026
+                 */
+                WHEN EXISTS (
+
+                    SELECT 1
+
+                    FROM article_cves
+
+                    WHERE
+                        article_cves.article_id
+                        =
+                        articles.id
+
+                        AND lower(
+                            article_cves.cve_id
+                        ) LIKE ?
+                )
+                THEN 100
+
+
+                /*
+                 * Partial threat-tag match.
+                 */
+                WHEN EXISTS (
+
+                    SELECT 1
+
+                    FROM article_tags
+
+                    WHERE
+                        article_tags.article_id
+                        =
+                        articles.id
+
+                        AND lower(
+                            article_tags.tag
+                        ) LIKE ?
+                )
+                THEN 95
+
+
+                /*
+                 * Source match.
+                 *
+                 * Example:
+                 * Security Affairs
+                 */
+                WHEN lower(
+                    COALESCE(
+                        source,
+                        ''
+                    )
+                ) LIKE ?
+                THEN 80
+
+
+                /*
+                 * Summary match.
+                 */
+                WHEN lower(
+                    COALESCE(
+                        summary,
+                        ''
+                    )
+                ) LIKE ?
+                THEN 70
+
+
+                /*
+                 * Why-it-matters evidence.
+                 */
+                WHEN lower(
+                    COALESCE(
+                        why_it_matters,
+                        ''
+                    )
+                ) LIKE ?
+                THEN 60
+
+
+                /*
+                 * Defensive recommendation match.
+                 */
+                WHEN lower(
+                    COALESCE(
+                        recommendations,
+                        ''
+                    )
+                ) LIKE ?
+                THEN 50
+
+
+                /*
+                 * General article-text match.
+                 *
+                 * This is deliberately lowest because
+                 * an article may only mention the term
+                 * briefly and not actually be about it.
+                 */
+                WHEN lower(
+                    COALESCE(
+                        full_content,
+                        ''
+                    )
+                ) LIKE ?
+                THEN 20
+
+
+                ELSE 0
+
+            END
+        """
+
+
+        relevance_parameters = [
+
+            # Exact severity
+            exact_search_value,
+
+            # Exact category
+            exact_search_value,
+
+            # Exact CVE
+            exact_search_value,
+
+            # Exact threat tag
+            exact_search_value,
+
+            # Exact title
+            exact_search_value,
+
+            # Title contains search
+            search_value,
+
+            # Partial CVE
+            search_value,
+
+            # Partial threat tag
+            search_value,
+
+            # Source
+            search_value,
+
+            # Summary
+            search_value,
+
+            # Why it matters
+            search_value,
+
+            # Recommendations
+            search_value,
+
+            # Full article text
+            search_value,
+        ]
+
+
+    # =====================================================
+    # SORTING
+    # =====================================================
+    
+    if search_value is not None:
+
+        if sort == "severity":
+
+            order_clause = f"""
+                {relevance_clause} DESC,
+
+                severity_score DESC,
+
+                COALESCE(
+                    published_at,
+                    collected_at
+                ) DESC,
+
+                id DESC
+            """
+
+        else:
+
+            order_clause = f"""
+                {relevance_clause} DESC,
+
+                COALESCE(
+                    published_at,
+                    collected_at
+                ) DESC,
+
+                id DESC
+            """
+
+
+    elif sort == "severity":
 
         order_clause = """
             severity_score DESC,
@@ -379,6 +826,7 @@ def api_articles(
             id DESC
         """
 
+
     else:
 
         order_clause = """
@@ -390,13 +838,20 @@ def api_articles(
             id DESC
         """
 
-    # -----------------------------------------------------
-    # Database queries
-    # -----------------------------------------------------
+
+    # =====================================================
+    # DATABASE
+    # =====================================================
 
     with get_connection() as connection:
 
+
+        # -------------------------------------------------
+        # TOTAL NUMBER OF MATCHES
+        # -------------------------------------------------
+
         total_row = (
+
             connection.execute(
                 f"""
                 SELECT
@@ -407,7 +862,9 @@ def api_articles(
                 WHERE
                     {where_clause}
                 """,
+
                 parameters,
+
             ).fetchone()
         )
 
@@ -419,7 +876,24 @@ def api_articles(
         )
 
 
+        # -------------------------------------------------
+        # ARTICLE RESULTS
+        # -------------------------------------------------
+
+        query_parameters = [
+
+            *parameters,
+
+            *relevance_parameters,
+
+            limit,
+
+            offset,
+        ]
+
+
         rows = (
+
             connection.execute(
                 f"""
                 SELECT
@@ -460,16 +934,16 @@ def api_articles(
 
                 OFFSET ?
                 """,
-                (
-                    *parameters,
 
-                    limit,
+                query_parameters,
 
-                    offset,
-                ),
             ).fetchall()
         )
 
+
+    # =====================================================
+    # API RESPONSE
+    # =====================================================
 
     articles = [
 
@@ -513,7 +987,6 @@ def api_articles(
         "articles":
             articles,
     }
-
 
 # =========================================================
 # HELPER - READ NVD RECORD

@@ -215,6 +215,10 @@
     null;
 
 
+  let articleRequestId =
+    0;
+
+
   /* =========================================================
      ALERT STATE
      ========================================================= */
@@ -2046,9 +2050,15 @@
 
   async function loadArticles() {
 
-    if (articlesLoading) {
-      return;
-    }
+    /*
+     * Each request receives a unique number.
+     *
+     * If the user starts another search before
+     * an older request finishes, only the newest
+     * request may update the screen.
+     */
+    const requestId =
+      ++articleRequestId;
 
 
     articlesLoading =
@@ -2061,40 +2071,99 @@
     if (
       page() === "reports"
     ) {
+
       render();
     }
 
 
+    /*
+     * Store the exact search/filter values
+     * belonging to this request.
+     */
+    const requestCategory =
+      category === "All"
+        ? ""
+        : category;
+
+
+    const requestSeverity =
+      severity === "All"
+        ? ""
+        : severity;
+
+
+    const requestSearch =
+      query.trim();
+
+
+    const requestSort =
+      sort;
+
+
+    const requestOffset =
+      articleOffset;
+
+
     try {
 
-      articleResponse =
+      const response =
         await CyberheadAPI
           .getArticles({
 
             category:
-              category === "All"
-                ? ""
-                : category,
+              requestCategory,
 
             severity:
-              severity === "All"
-                ? ""
-                : severity,
+              requestSeverity,
 
             search:
-              query.trim(),
+              requestSearch,
 
-            sort,
+            sort:
+              requestSort,
 
             limit:
               ARTICLE_LIMIT,
 
             offset:
-              articleOffset
+              requestOffset
           });
 
 
+      /*
+       * A newer request was started while
+       * this one was waiting for the API.
+       *
+       * Ignore the old response.
+       */
+      if (
+        requestId
+        !==
+        articleRequestId
+      ) {
+
+        return;
+      }
+
+
+      articleResponse =
+        response;
+
+
     } catch (error) {
+
+      /*
+       * Do not show errors from an old request.
+       */
+      if (
+        requestId
+        !==
+        articleRequestId
+      ) {
+
+        return;
+      }
+
 
       articlesError =
         error.name === "AbortError"
@@ -2106,6 +2175,20 @@
 
     } finally {
 
+      /*
+       * Only the newest request controls the
+       * loading state and final screen render.
+       */
+      if (
+        requestId
+        !==
+        articleRequestId
+      ) {
+
+        return;
+      }
+
+
       articlesLoading =
         false;
 
@@ -2113,6 +2196,7 @@
       if (
         page() === "reports"
       ) {
+
         render();
       }
     }
