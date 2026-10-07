@@ -4803,69 +4803,958 @@
      ABOUT
      ========================================================= */
 
-  function about() {
+function about() {
 
-    return `
-
-      ${
-        pageIntro(
-          "About <em>Cyberhead</em>",
-          "Threats move fast. Stay one step ahead."
-        )
-      }
+  const processedReports =
+    liveStats
+      ?.processed_articles
+    ??
+    0;
 
 
-      <div class="prose panel">
+  const collectedArticles =
+    liveStats
+      ?.total_articles
+    ??
+    0;
 
-        <h2>
-          CYBERHEAD NEWS
-        </h2>
+
+  const last24 =
+    liveStats
+      ?.last_24_hours
+      ?.articles_considered
+    ??
+    0;
+
+
+  return `
+
+    ${
+      pageIntro(
+        "About <em>CYBERHEAD</em>",
+        "An automated cybersecurity news intelligence and threat-analysis platform."
+      )
+    }
+
+
+    <!-- ===================================================
+         PROJECT OVERVIEW
+         =================================================== -->
+
+    <div class="section-label">
+      PROJECT OVERVIEW
+    </div>
+
+
+    <section class="panel prose">
+
+      <div class="eyebrow">
+        WHAT IS CYBERHEAD?
+      </div>
+
+      <h2>
+        CYBERSECURITY NEWS INTELLIGENCE
+      </h2>
+
+
+      <p>
+
+        CYBERHEAD News is a cybersecurity
+        intelligence platform designed to
+        automatically collect, process,
+        classify and analyse cybersecurity
+        news from multiple online sources.
+
+      </p>
+
+
+      <p>
+
+        Instead of requiring an analyst to
+        manually check several cybersecurity
+        websites, CYBERHEAD gathers the
+        articles automatically and transforms
+        them into structured intelligence
+        reports.
+
+      </p>
+
+
+      <p>
+
+        The system combines machine learning,
+        cybersecurity intelligence enrichment,
+        evidence-based severity analysis,
+        natural language processing and
+        automated news collection in one
+        platform.
+
+      </p>
+
+    </section>
+
+
+    <!-- ===================================================
+         LIVE SYSTEM STATUS
+         =================================================== -->
+
+    <div class="section-label">
+      CURRENT CYBERHEAD DATABASE
+    </div>
+
+
+    <div class="analysis-overview-grid">
+
+      <div class="panel analysis-overview-card">
+
+        <span>
+          ARTICLES COLLECTED
+        </span>
+
+        <strong>
+          ${escape(
+            collectedArticles
+          )}
+        </strong>
+
+        <small>
+          Stored cybersecurity articles
+        </small>
+
+      </div>
+
+
+      <div class="panel analysis-overview-card">
+
+        <span>
+          PROCESSED REPORTS
+        </span>
+
+        <strong>
+          ${escape(
+            processedReports
+          )}
+        </strong>
+
+        <small>
+          Fully analysed intelligence reports
+        </small>
+
+      </div>
+
+
+      <div class="panel analysis-overview-card">
+
+        <span>
+          LAST 24 HOURS
+        </span>
+
+        <strong>
+          ${escape(
+            last24
+          )}
+        </strong>
+
+        <small>
+          Articles analysed in the current briefing window
+        </small>
+
+      </div>
+
+    </div>
+
+
+    <!-- ===================================================
+         HOW THE SYSTEM WORKS
+         =================================================== -->
+
+    <div class="section-label">
+      HOW CYBERHEAD WORKS
+    </div>
+
+
+    <section class="panel prose">
+
+      <div class="eyebrow">
+        AUTOMATED INTELLIGENCE PIPELINE
+      </div>
+
+      <h2>
+        FROM NEWS ARTICLE TO THREAT REPORT
+      </h2>
+
+
+      <p>
+
+        CYBERHEAD processes cybersecurity
+        information through a multi-stage
+        automated pipeline.
+
+      </p>
+
+
+      <div class="about-pipeline">
+
+        <div>
+          <strong>01</strong>
+          <span>RSS / ATOM SOURCES</span>
+          <p>
+            Cybersecurity articles are collected
+            from enabled intelligence sources.
+          </p>
+        </div>
+
+
+        <div>
+          <strong>02</strong>
+          <span>ARTICLE EXTRACTION</span>
+          <p>
+            Full article content is extracted
+            from the collected web pages.
+          </p>
+        </div>
+
+
+        <div>
+          <strong>03</strong>
+          <span>CVE EXTRACTION</span>
+          <p>
+            CVE identifiers mentioned in
+            articles are automatically detected.
+          </p>
+        </div>
+
+
+        <div>
+          <strong>04</strong>
+          <span>ML CLASSIFICATION</span>
+          <p>
+            The trained machine-learning model
+            assigns each article to a
+            cybersecurity category.
+          </p>
+        </div>
+
+
+        <div>
+          <strong>05</strong>
+          <span>THREAT INTELLIGENCE</span>
+          <p>
+            CVE information is enriched using
+            NVD and CISA Known Exploited
+            Vulnerabilities data.
+          </p>
+        </div>
+
+
+        <div>
+          <strong>06</strong>
+          <span>THREAT TAGGING</span>
+          <p>
+            Evidence is analysed for indicators
+            such as ransomware, exploitation
+            and zero-day activity.
+          </p>
+        </div>
+
+
+        <div>
+          <strong>07</strong>
+          <span>SEVERITY ANALYSIS</span>
+          <p>
+            The CYBERHEAD severity engine
+            calculates an explainable threat
+            score.
+          </p>
+        </div>
+
+
+        <div>
+          <strong>08</strong>
+          <span>NLP SUMMARY</span>
+          <p>
+            Important sentences are selected
+            to create a concise article summary.
+          </p>
+        </div>
+
+
+        <div>
+          <strong>09</strong>
+          <span>DAILY BRIEFING</span>
+          <p>
+            Priority threats from the rolling
+            previous 24 hours are assembled
+            into the Daily Briefing.
+          </p>
+        </div>
+
+
+        <div>
+          <strong>10</strong>
+          <span>CYBERHEAD DASHBOARD</span>
+          <p>
+            The processed intelligence is
+            delivered through the FastAPI
+            backend to this interface.
+          </p>
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- ===================================================
+         MACHINE LEARNING
+         =================================================== -->
+
+    <div class="section-label">
+      MACHINE LEARNING
+    </div>
+
+
+    <section class="panel prose">
+
+      <div class="eyebrow">
+        ARTICLE CLASSIFICATION
+      </div>
+
+      <h2>
+        CYBERSECURITY CATEGORY CLASSIFIER
+      </h2>
+
+
+      <p>
+
+        CYBERHEAD uses a trained machine-learning
+        classifier to identify the main
+        cybersecurity category of each processed
+        article.
+
+      </p>
+
+
+      <p>
+
+        The model analyses article text using
+        TF-IDF features and a Linear Support
+        Vector Machine classifier.
+
+      </p>
+
+
+      <p>
+
+        The categories currently used by
+        CYBERHEAD are:
+
+      </p>
+
+
+      <div class="about-category-grid">
+
+        <span>Vulnerabilities</span>
+
+        <span>Data Breaches</span>
+
+        <span>Ransomware</span>
+
+        <span>Phishing</span>
+
+        <span>DDoS</span>
+
+        <span>Other Malware</span>
+
+        <span>Other Cybersecurity News</span>
+
+      </div>
+
+
+      <p>
+
+        The classification result is used
+        throughout the dashboard for browsing,
+        filtering, Daily Briefing statistics
+        and threat analysis.
+
+      </p>
+
+    </section>
+
+
+    <!-- ===================================================
+         SEVERITY ENGINE
+         =================================================== -->
+
+    <div class="section-label">
+      THREAT SEVERITY
+    </div>
+
+
+    <section class="panel prose">
+
+      <div class="eyebrow">
+        EXPLAINABLE THREAT PRIORITISATION
+      </div>
+
+      <h2>
+        CYBERHEAD SEVERITY SCORE
+      </h2>
+
+
+      <p>
+
+        CYBERHEAD assigns each analysed
+        report an internal severity score
+        from 0 to 100.
+
+      </p>
+
+
+      <p>
+
+        Severity considers multiple threat
+        indicators, including:
+
+      </p>
+
+
+      <div class="about-feature-grid">
+
+        <div class="panel">
+          CVSS information
+        </div>
+
+        <div class="panel">
+          Active exploitation
+        </div>
+
+        <div class="panel">
+          Zero-day status
+        </div>
+
+        <div class="panel">
+          Ransomware involvement
+        </div>
+
+        <div class="panel">
+          Data theft
+        </div>
+
+        <div class="panel">
+          Critical infrastructure impact
+        </div>
+
+        <div class="panel">
+          Number of affected systems
+        </div>
+
+        <div class="panel">
+          Threat recency
+        </div>
+
+        <div class="panel">
+          Malware sophistication
+        </div>
+
+      </div>
+
+
+      <div class="analysis-severity-grid">
+
+        <div class="analysis-stat-card Critical">
+
+          <span>
+            CRITICAL
+          </span>
+
+          <strong>
+            70–100
+          </strong>
+
+        </div>
+
+
+        <div class="analysis-stat-card High">
+
+          <span>
+            HIGH
+          </span>
+
+          <strong>
+            40–69
+          </strong>
+
+        </div>
+
+
+        <div class="analysis-stat-card Medium">
+
+          <span>
+            MEDIUM
+          </span>
+
+          <strong>
+            20–39
+          </strong>
+
+        </div>
+
+
+        <div class="analysis-stat-card Low">
+
+          <span>
+            LOW
+          </span>
+
+          <strong>
+            0–19
+          </strong>
+
+        </div>
+
+      </div>
+
+
+      <div class="notice">
+
+        The CYBERHEAD Severity Score is an
+        internal threat-prioritisation score.
+
+        It does not replace the official
+        CVSS vulnerability score.
+
+      </div>
+
+    </section>
+
+
+    <!-- ===================================================
+         NLP
+         =================================================== -->
+
+    <div class="section-label">
+      NATURAL LANGUAGE PROCESSING
+    </div>
+
+
+    <section class="panel prose">
+
+      <div class="eyebrow">
+        AUTOMATIC SUMMARISATION
+      </div>
+
+      <h2>
+        EXTRACTIVE NLP SUMMARY
+      </h2>
+
+
+      <p>
+
+        CYBERHEAD uses lightweight
+        extractive natural language
+        processing to summarise articles.
+
+      </p>
+
+
+      <p>
+
+        The summariser ranks sentences using
+        TF-IDF-based relevance and selects
+        important original sentences from
+        the article.
+
+      </p>
+
+
+      <p>
+
+        This means the current summarisation
+        component does not generate completely
+        new sentences using a large language
+        model. It selects relevant content
+        directly from the collected article.
+
+      </p>
+
+
+      <p>
+
+        The
+
+        <strong>
+          Why it matters
+        </strong>
+
+        and
+
+        <strong>
+          Defensive recommendations
+        </strong>
+
+        sections are generated separately
+        using structured cybersecurity
+        evidence and defensive rules.
+
+      </p>
+
+    </section>
+
+
+    <!-- ===================================================
+         THREAT INTELLIGENCE
+         =================================================== -->
+
+    <div class="section-label">
+      EXTERNAL THREAT INTELLIGENCE
+    </div>
+
+
+    <section class="analysis-explanation panel">
+
+      <div>
+
+        <h3>
+          NVD
+        </h3>
 
         <p>
 
-          CYBERHEAD automatically collects
-          cybersecurity news, classifies
-          articles using machine learning,
-          extracts threat intelligence,
-          calculates explainable severity,
-          generates summaries and creates
-          a rolling Daily Briefing.
-
-        </p>
-
-
-        <h2>
-          LIVE COMPONENTS
-        </h2>
-
-        <p>
-
-          Daily Briefing, Threats & Alerts,
-          All Reports, Saved Stories,
-          search, filters, article details,
-          threat statistics and source
-          management are connected to the
-          CYBERHEAD backend.
-
-        </p>
-
-
-        <h2>
-          CYBERHEAD SEVERITY SCORE
-        </h2>
-
-        <p>
-
-          The CYBERHEAD Severity Score
-          is an internal 0-100 threat score.
-
-          It is not the same as CVSS.
+          CVEs detected in articles can be
+          enriched using information from
+          the National Vulnerability Database,
+          including vulnerability details
+          and CVSS information.
 
         </p>
 
       </div>
-    `;
-  }
+
+
+      <div>
+
+        <h3>
+          CISA KEV
+        </h3>
+
+        <p>
+
+          CYBERHEAD checks whether detected
+          vulnerabilities appear in the
+          CISA Known Exploited Vulnerabilities
+          catalogue.
+
+        </p>
+
+      </div>
+
+
+      <div>
+
+        <h3>
+          SOURCE PROVENANCE
+        </h3>
+
+        <p>
+
+          Reports retain their original
+          source and article link so analysts
+          can trace intelligence back to
+          the collected publication.
+
+        </p>
+
+      </div>
+
+    </section>
+
+
+    <!-- ===================================================
+         SOURCE MANAGEMENT
+         =================================================== -->
+
+    <div class="section-label">
+      INTELLIGENCE SOURCES
+    </div>
+
+
+    <section class="panel prose">
+
+      <div class="eyebrow">
+        DYNAMIC RSS / ATOM MANAGEMENT
+      </div>
+
+      <h2>
+        CONFIGURABLE NEWS COLLECTION
+      </h2>
+
+
+      <p>
+
+        Intelligence sources are stored in
+        the CYBERHEAD database rather than
+        being permanently fixed in the
+        collector code.
+
+      </p>
+
+
+      <p>
+
+        Through the Sources page, an
+        administrator can:
+
+      </p>
+
+
+      <div class="about-feature-grid">
+
+        <div class="panel">
+          View configured sources
+        </div>
+
+        <div class="panel">
+          Test RSS / Atom feeds
+        </div>
+
+        <div class="panel">
+          Add new feeds
+        </div>
+
+        <div class="panel">
+          Enable sources
+        </div>
+
+        <div class="panel">
+          Disable sources
+        </div>
+
+        <div class="panel">
+          View collector status
+        </div>
+
+      </div>
+
+
+      <p>
+
+        Enabled feeds are automatically
+        included the next time the normal
+        CYBERHEAD collection pipeline runs.
+
+      </p>
+
+
+      <p>
+
+        Feed URLs are validated before
+        being accepted, and duplicate
+        sources are rejected.
+
+      </p>
+
+    </section>
+
+
+    <!-- ===================================================
+         AUTOMATION
+         =================================================== -->
+
+    <div class="section-label">
+      AUTOMATION
+    </div>
+
+
+    <section class="panel prose">
+
+      <div class="eyebrow">
+        AUTOMATED INTELLIGENCE PIPELINE
+      </div>
+
+      <h2>
+        SCHEDULED OR MANUAL OPERATION
+      </h2>
+
+
+      <p>
+
+        CYBERHEAD can process new cybersecurity
+        articles automatically through its
+        complete intelligence pipeline.
+
+      </p>
+
+
+      <p>
+
+        This installation is currently
+        configured to run the CYBERHEAD
+        pipeline automatically every six
+        hours using Windows Task Scheduler.
+
+      </p>
+
+
+      <p>
+
+        During each scheduled run,
+        enabled intelligence sources are
+        checked for new articles.
+
+        New content can then pass through
+        extraction, machine-learning
+        classification, CVE detection,
+        NVD and CISA enrichment,
+        threat tagging, severity analysis,
+        summarisation and Daily Briefing
+        generation.
+
+      </p>
+
+
+      <p>
+
+        CYBERHEAD does not depend on a
+        central online server for this
+        automation.
+
+        Each installation can run its own
+        local pipeline and maintain its
+        own intelligence database.
+
+      </p>
+
+
+      <p>
+
+        Users installing CYBERHEAD on
+        another computer can run the
+        pipeline manually or configure
+        their own operating-system
+        scheduler for automatic updates.
+
+      </p>
+
+    </section>
+
+
+    <!-- ===================================================
+         DASHBOARD
+         =================================================== -->
+
+    <div class="section-label">
+      DASHBOARD FEATURES
+    </div>
+
+
+    <section class="panel prose">
+
+      <div class="about-feature-grid">
+
+        <div class="panel">
+
+          <h3>
+            DAILY BRIEFING
+          </h3>
+
+          <p>
+            Priority cybersecurity threats
+            from the rolling previous
+            24 hours.
+          </p>
+
+        </div>
+
+
+        <div class="panel">
+
+          <h3>
+            THREATS & ALERTS
+          </h3>
+
+          <p>
+            Current Critical and High
+            threats requiring attention.
+          </p>
+
+        </div>
+
+
+        <div class="panel">
+
+          <h3>
+            ALL REPORTS
+          </h3>
+
+          <p>
+            Search, filter and browse the
+            processed intelligence database.
+          </p>
+
+        </div>
+
+
+        <div class="panel">
+
+          <h3>
+            SAVED STORIES
+          </h3>
+
+          <p>
+            Store important reports in the
+            current browser for later review.
+          </p>
+
+        </div>
+
+
+        <div class="panel">
+
+          <h3>
+            ANALYSIS
+          </h3>
+
+          <p>
+            Explore severity and category
+            statistics with interactive
+            report filtering.
+          </p>
+
+        </div>
+
+
+        <div class="panel">
+
+          <h3>
+            SOURCES
+          </h3>
+
+          <p>
+            Manage the RSS and Atom feeds
+            used by the collector.
+          </p>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <div class="notice">
+
+      CYBERHEAD NEWS · AI FOR CYBERSECURITY PROJECT
+
+      <br>
+
+      THREATS MOVE FAST.
+      STAY ONE STEP AHEAD.
+
+    </div>
+
+  `;
+}
 
 
   /* =========================================================
