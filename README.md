@@ -6,7 +6,6 @@ It collects cybersecurity news from configured RSS/Atom sources, extracts articl
 
 CYBERHEAD does **not** require a permanent public server for standalone use. Each user can run their own local copy on Windows or macOS with their own local SQLite database.
 
-For a shorter installation/automation guide, see [`docs/CYBERHEAD_SETUP_AND_AUTOMATION.md`](docs/CYBERHEAD_SETUP_AND_AUTOMATION.md).
 
 ---
 
