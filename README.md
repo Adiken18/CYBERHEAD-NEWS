@@ -175,9 +175,10 @@ If `py` is unavailable:
 
 ```powershell
 python -m venv .venv
-```
+
 Then enter virtual environment with following script:
-.\.venv\scripts\Activate.ps1 
+.\.venv\scripts\Activate.ps1
+``` 
 
 You do not have to activate the virtual environment. The following instructions call its Python executable directly, which avoids PowerShell execution-policy problems.
 
